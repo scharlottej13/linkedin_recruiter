@@ -7,17 +7,18 @@ Created on Fri Oct  9 10:39:43 2020
 
 import pandas as pd
 import os
+import datetime
 
 data_path = os.path.abspath(
     "N:\Theile\LinkedIn\LinkedInRecruiter_dffromtobase_merged_gdp.csv")
-outputs_dir = os.path.abspath("N:\johnson\linkedin_recruiter\outputs")
-inputs_dir = os.path.abspath("N:\johnson\linkedin_recruiter\inputs")
+output_dir = os.path.abspath("N:\johnson\linkedin_recruiter\outputs")
+input_dir = os.path.abspath("N:\johnson\linkedin_recruiter\inputs")
 
 df = pd.read_csv(data_path)
 df = df.rename(
     columns={'countrycode_x': 'iso3_from', 'countrycode_y': 'iso3_to'})
 loc_mapper = pd.read_csv(
-    os.path.join(inputs_dir, 'UNSD-methodology.csv'), encoding='latin1'
+    os.path.join(input_dir, 'UNSD-methodology.csv'), encoding='latin1'
 )
 loc_mapper['ISO-alpha3 Code'] = loc_mapper['ISO-alpha3 Code'].str.lower()
 # add TWN, not recognized by UN as separate from China
@@ -38,8 +39,26 @@ for flow in ['from', 'to']:
 
 # because R and I are currently not friends
 df = df.rename(columns={
-    'region_from': 'orig_reg', 'region_to': 'dest_reg', 'count': 'flow'})
-df.groupby(['orig_reg', 'dest_reg'])['flow'].sum().to_csv("U:/linkedin_recruiter/region_flows_2020_10_09.csv")
+    'region_from': 'orig_reg', 'region_to': 'dest_reg',
+    'number_people_who_indicated': 'flow', 'subregion_from': 'orig_subreg',
+    'subregion_to': 'dest_subreg'})
+today = datetime.datetime.now().date()
+# save it
+df.query('query_time_round == "2020-07-25 02:00:00"').groupby(
+    ['orig_reg', 'dest_reg'])['flow'].sum().to_csv(
+        os.path.join(output_dir, f'july_region_flows_{today}.csv'))
+df.query('query_time_round == "2020-07-25 02:00:00"').groupby(
+    ['orig_subreg', 'dest_subreg'])['flow'].sum().to_csv(
+        os.path.join(output_dir, f'july_subregion_flows_{today}.csv'))
+# the paper from Abel & Cohen has a *slightly* different location aggregation
+midreg_dict = pd.read_csv(
+    os.path.join(input_dir, 'abel_regions.csv')
+).set_index('Sub-region Name')['Mid-region Name'].to_dict()
+df['orig_midreg'] = df['orig_subreg'].map(midreg_dict)
+df['dest_midreg'] = df['dest_subreg'].map(midreg_dict)
+df.query('query_time_round == "2020-07-25 02:00:00"').groupby(
+    ['orig_midreg', 'dest_midreg'])['flow'].sum().to_csv(
+        os.path.join(output_dir, f'july_midregion_flows_{today}.csv'))
 
 
 
@@ -47,50 +66,20 @@ df.groupby(['orig_reg', 'dest_reg'])['flow'].sum().to_csv("U:/linkedin_recruiter
 
 
 
-# manual fun time mappings
-missing_locs = set(
-    list(df.loc[df['region_from'].isnull(), 'country_from']) + list(df.loc[df['region_to'].isnull(), 'country_to'])
-)
-location_country_dict = {
-    'Brabantine City Row': 'Netherlands',
-    'Charlotte Metro': 'United States'
-    'Gold Coast': 'Australia'
-    'Metro Cebu': 'Philippines',
-    'Metro Manila': 'Philippines',
-    }
-location_region_dict = {
-    'Anguilla': 'Central America (incl. Mexico and Carribean)',
-    'Antigua and Barbuda': 'Central America (incl. Mexico and Carribean)',
-    'Bermuda': 'Central America (incl. Mexico and Carribean)',
-    'Brabantine City Row': 'Western Europe',
-    'British Virgin Islands': 'Central America (incl. Mexico and Carribean)',
-    'Cayman Islands': 'Central America (incl. Mexico and Carribean)',
-    'Charlotte Metro': 'North America',
-    'Congo (DRC)': 'Sub-Saharan Africa',
-    "Côte d'Ivoire": 'Sub-Saharan Africa',
-    'Dominica': 'Central America (incl. Mexico and Carribean)',
-    'FYRO Macedonia': 'Eastern Europe',
-    'French-Guadeloupe': 'Central America (incl. Mexico and Carribean)',
-    'French-Martinique': 'Central America (incl. Mexico and Carribean)',
-    'Gaza Strip': 'Western Asia',
-    'Gold Coast': 'Oceania',
-    'Hong Kong SAR': 'Central Asia (incl. Russia)',
-    'Kosovo': 'Eastern Europe',
-    'Metro Cebu': 'South-East Asia',
-    'Metro Manila': 'South-East Asia',
-    'Palestinian Authority': 'Western Asia',
-    'Republic of the Congo': 'Sub-Saharan Africa',
-    'Seychelles': 'Central America (incl. Mexico and Carribean)',
-    'St Kitts and Nevis': 'Central America (incl. Mexico and Carribean)',
-    'St Lucia': 'Central America (incl. Mexico and Carribean)',
-    'St Vincent and the Grenadines': 'Central America (incl. Mexico and Carribean)',
-    'Taiwan': 'Central Asia (incl. Russia)',
-    'The Bahamas': 'Central America (incl. Mexico and Carribean)',
-    'The Gambia': 'Sub-Saharan Africa',
-    'Turks and Caicos Islands': 'Central America (incl. Mexico and Carribean)',
-    'West Bank': 'Western Asia',
-    'West Midlands': 'Northern Europe'
-}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
