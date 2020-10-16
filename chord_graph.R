@@ -14,6 +14,7 @@ library("dplyr")
 df0 <- read.csv("N:/johnson/linkedin_recruiter/outputs/july_midregion_flows_2020-10-16.csv")
 #plot parameters (e.g. colors, etc.)
 df1 <- read.csv(system.file("vidwp", "reg_plot.csv", package = "migest"), stringsAsFactors=FALSE)
+color_vector <- setNames(df1$col1, df1$region)
 
 #default chord diagram
 chordDiagram(x = df0)
@@ -22,7 +23,7 @@ circos.clear()
 circos.par(start.degree = 90, gap.degree = 4, track.margin = c(-0.1, 0.1), points.overflow.warning = FALSE)
 par(mar = rep(0, 4))
 # real deal
-chordDiagram(x = df0 %>% select(1:3), grid.col = df1$col, transparency = 0.25,
+chordDiagram(x = df0 %>% select(1:3), grid.col = color_vector, transparency = 0.25,
              order = df1$region, directional = 1,
              direction.type = c("arrows", "diffHeight"), diffHeight  = -0.04,
              annotationTrack = "grid", annotationTrackHeight = c(0.05, 0.1),
