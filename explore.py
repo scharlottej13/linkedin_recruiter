@@ -37,25 +37,26 @@ for flow in ['from', 'to']:
         assert not df[f'{loc_lvl}_{flow}'].isnull().values.any(), \
                df.loc[df[f'{loc_lvl}_{flow}'].isnull(), f'iso3_{flow}'].unique()
 
+# the paper from Abel & Cohen has a *slightly* different location aggregation
+midreg_dict = pd.read_csv(
+    os.path.join(input_dir, 'abel_regions.csv')
+).set_index('Sub-region Name')['Mid-region Name'].to_dict()
+df['midreg_from'] = df['subregion_from'].map(midreg_dict)
+df['midreg_to'] = df['subregion_to'].map(midreg_dict)
+df.to_excel(os.path.join(output_dir, "merged_with_region.xlsx"))
+
 # because R and I are currently not friends
 df = df.rename(columns={
     'region_from': 'orig_reg', 'region_to': 'dest_reg',
     'number_people_who_indicated': 'flow', 'subregion_from': 'orig_subreg',
     'subregion_to': 'dest_subreg'})
 today = datetime.datetime.now().date()
-# save it
 df.query('query_time_round == "2020-07-25 02:00:00"').groupby(
     ['orig_reg', 'dest_reg'])['flow'].sum().to_csv(
         os.path.join(output_dir, f'july_region_flows_{today}.csv'))
 df.query('query_time_round == "2020-07-25 02:00:00"').groupby(
     ['orig_subreg', 'dest_subreg'])['flow'].sum().to_csv(
         os.path.join(output_dir, f'july_subregion_flows_{today}.csv'))
-# the paper from Abel & Cohen has a *slightly* different location aggregation
-midreg_dict = pd.read_csv(
-    os.path.join(input_dir, 'abel_regions.csv')
-).set_index('Sub-region Name')['Mid-region Name'].to_dict()
-df['orig_midreg'] = df['orig_subreg'].map(midreg_dict)
-df['dest_midreg'] = df['dest_subreg'].map(midreg_dict)
 df.query('query_time_round == "2020-07-25 02:00:00"').groupby(
     ['orig_midreg', 'dest_midreg'])['flow'].sum().to_csv(
         os.path.join(output_dir, f'july_midregion_flows_{today}.csv'))
