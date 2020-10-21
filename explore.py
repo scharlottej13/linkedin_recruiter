@@ -6,64 +6,109 @@ Created on Fri Oct  9 10:39:43 2020
 """
 
 import pandas as pd
+import numpy as np
 import os
 import datetime
 
-data_path = os.path.abspath(
-    "N:\Theile\LinkedIn\LinkedInRecruiter_dffromtobase_merged_gdp.csv")
-output_dir = os.path.abspath("N:\johnson\linkedin_recruiter\outputs")
-input_dir = os.path.abspath("N:\johnson\linkedin_recruiter\inputs")
 
-df = pd.read_csv(data_path)
-df = df.rename(
-    columns={'countrycode_x': 'iso3_from', 'countrycode_y': 'iso3_to'})
-loc_mapper = pd.read_csv(
-    os.path.join(input_dir, 'UNSD-methodology.csv'), encoding='latin1'
-)
-loc_mapper['ISO-alpha3 Code'] = loc_mapper['ISO-alpha3 Code'].str.lower()
-# add TWN, not recognized by UN as separate from China
-loc_mapper = loc_mapper.append(
-    pd.DataFrame(
-        {'Region Name': ['Asia'], 'Sub-region Name': ['Eastern Asia'],
-         'ISO-alpha3 Code': ['twn']}), ignore_index=True)
-iso3_subregion = loc_mapper.set_index(
-    'ISO-alpha3 Code')['Sub-region Name'].to_dict()
-iso3_region = loc_mapper.set_index('ISO-alpha3 Code')['Region Name'].to_dict()
+def _working_dir():
+    n_drive = os.path.abspath("N:/johnson/linkedin_recruiter")
+    nextcloud = os.path.abspath(
+        "/Users/scharlottej13/Nextcloud/linkedin_recruiter")
+    if os.path.exists(n_drive):
+        return n_drive
+    elif os.path.exists(nextcloud):
+        return nextcloud
+    else:
+        AssertionError, f"could not find {n_drive} or {nextcloud}"
 
-for flow in ['from', 'to']:
-    df[f'region_{flow}'] = df[f'iso3_{flow}'].map(iso3_region)
-    df[f'subregion_{flow}'] = df[f'iso3_{flow}'].map(iso3_subregion)
-    for loc_lvl in ['region', 'subregion']:
-        assert not df[f'{loc_lvl}_{flow}'].isnull().values.any(), \
-               df.loc[df[f'{loc_lvl}_{flow}'].isnull(), f'iso3_{flow}'].unique()
 
-# the paper from Abel & Cohen has a *slightly* different location aggregation
-midreg_dict = pd.read_csv(
-    os.path.join(input_dir, 'abel_regions.csv')
-).set_index('Sub-region Name')['Mid-region Name'].to_dict()
-df['midreg_from'] = df['subregion_from'].map(midreg_dict)
-df['midreg_to'] = df['subregion_to'].map(midreg_dict)
-df.to_excel(os.path.join(output_dir, "merged_with_region.xlsx"))
+def get_input_dir():
+    return os.path.join(_working_dir(), 'inputs')
 
-# because R and I are currently not friends
-df = df.rename(columns={
-    'region_from': 'orig_reg', 'region_to': 'dest_reg',
-    'number_people_who_indicated': 'flow', 'subregion_from': 'orig_subreg',
-    'subregion_to': 'dest_subreg'})
+
+def get_output_dir():
+    return os.path.join(_working_dir(), 'outputs')
+
+
+def merge_region_subregion(df):
+    loc_mapper = pd.read_csv(
+        os.path.join(get_input_dir(), 'UNSD-methodology.csv'),
+        encoding='latin1')
+    loc_mapper['ISO-alpha3 Code'] = loc_mapper['ISO-alpha3 Code'].str.lower()
+    # add TWN, not recognized by UN as separate from China
+    loc_mapper = loc_mapper.append(
+        pd.DataFrame(
+            {'Region Name': ['Asia'], 'Sub-region Name': ['Eastern Asia'],
+             'ISO-alpha3 Code': ['twn']}), ignore_index=True)
+    # create some dictionaries for mapping
+    iso3_subreg = loc_mapper.set_index(
+        'ISO-alpha3 Code')['Sub-region Name'].to_dict()
+    iso3_reg = loc_mapper.set_index(
+        'ISO-alpha3 Code')['Region Name'].to_dict()
+    # paper from Abel & Cohen has different groups, call them "midregions"
+    midreg_dict = pd.read_csv(
+        os.path.join(get_input_dir(), 'abel_regions.csv')
+    ).set_index('subregion_from')['midreg_from'].to_dict()
+    # map from country to region, subregion, and midregion
+    for flow in ['orig', 'dest']:
+        df[f'{flow}_reg'] = df[f'countrycode_{flow}'].map(iso3_reg)
+        df[f'{flow}_subreg'] = df[f'countrycode_{flow}'].map(iso3_subreg)
+        df[f'{flow}_midreg'] = df[f'{flow}_subreg'].map(midreg_dict)
+        for loc in ['reg', 'midreg', 'subreg']:
+            assert not df[f'{flow}_{loc}'].isnull().values.any(), \
+                df.loc[
+                    df[f'{flow}_{loc}'].isnull(), f'countrycode_{flow}'
+                ].unique()
+    return df
+
+
+def bin_continuous_vars(df, cont_vars):
+    if type(cont_vars) is not list:
+        cont_vars = list(cont_vars)
+    cont_var_cols = []
+    for var in cont_vars:
+        cont_var_cols = cont_var_cols + \
+            [x for x in df.columns if var in x]
+    assert ((len(cont_var_cols) > 0) & (np.mod(len(cont_var_cols), 2) == 0)), \
+        "Need origin and destination, one is missing"
+    for col in cont_var_cols:
+        labels = ['low', 'low-middle', 'middle', 'middle-high', 'high']
+        df[f'{col}_bin'] = pd.qcut(
+            df[f'{col}'], q=5, labels=labels
+        )
+    return df
+
+
+# get that data
+df = pd.read_csv(os.path.join(
+    get_input_dir(), 'LinkedInRecruiter_dffromtobase_merged_gdp.csv'))
+# basic renaming, order doesn't matter here
+df.columns = df.columns.str.replace(
+    '_x', '_orig').str.replace('_y', '_dest').str.replace(
+        '_from', '_orig').str.replace('_to', '_dest')
+df = df.rename(columns={'number_people_who_indicated': 'flow'})
+
+df = merge_region_subregion(df)
+
+# for naming outputs
 today = datetime.datetime.now().date()
+
+# various collapses by region level & date of data collection
+# df.query('query_time_round == "2020-07-25 02:00:00"').groupby(
+#     ['orig_midreg', 'dest_midreg'])['flow'].sum().to_csv(
+#         os.path.join(get_output_dir(), f'july_midregion_flows_{today}.csv'))
+
+df = bin_continuous_vars(df, ['hdi', 'gdp'])
+
 df.query('query_time_round == "2020-07-25 02:00:00"').groupby(
-    ['orig_reg', 'dest_reg'])['flow'].sum().to_csv(
-        os.path.join(output_dir, f'july_region_flows_{today}.csv'))
+    [x for x in df.columns if 'bin' in x and 'gdp' in x]
+)['flow'].sum().to_csv(
+    os.path.join(get_output_dir(), f'july_gdp_flows_{today}.csv'))
 df.query('query_time_round == "2020-07-25 02:00:00"').groupby(
-    ['orig_subreg', 'dest_subreg'])['flow'].sum().to_csv(
-        os.path.join(output_dir, f'july_subregion_flows_{today}.csv'))
-df.query('query_time_round == "2020-07-25 02:00:00"').groupby(
-    ['orig_midreg', 'dest_midreg'])['flow'].sum().to_csv(
-        os.path.join(output_dir, f'july_midregion_flows_{today}.csv'))
-
-
-
-
+    [x for x in df.columns if 'bin' in x and 'hdi' in x]
+)['flow'].sum().to_csv(
+    os.path.join(get_output_dir(), f'july_hdi_flows_{today}.csv'))
 
 
 
