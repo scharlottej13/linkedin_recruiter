@@ -80,6 +80,14 @@ def bin_continuous_vars(df, cont_vars):
     return df
 
 
+def weighted_flow1(loc_lvl):
+    df['flow_norm1'] = \
+        df['flow'] / (df[f'orig_{loc_lvl}'] + df[f'dest_{loc_lvl}'])
+    df['flow_norm2'] = \
+        df['flow']**2 / (df[f'orig_{loc_lvl}'] + df[f'dest_{loc_lvl}'])
+    return df
+
+
 # get that data
 df = pd.read_csv(os.path.join(
     get_input_dir(), 'LinkedInRecruiter_dffromtobase_merged_gdp.csv'))
