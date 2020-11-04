@@ -88,6 +88,27 @@ def weighted_flow1(loc_lvl):
     return df
 
 
+def data_validation(df):
+    # first check percent difference between the two dates of data collection
+    value_cols = ['flow', 'linkedinusers_orig', 'linkedinusers_dest']
+    id_cols = ['countrycode_dest', 'countrycode_orig']
+    diff_col = 'query_time_round'
+    assert not df[id_cols + [diff_col]].duplicated().values.any()
+    # % chg f'n from previous row, so pivot first to fill in 0s
+    # iloc[1:] b/c now the baseline is NA
+    # 1st unstack moves the id cols to the index
+    # 2nd unstack(0) reshapes so value variables are columns
+    check_df = pd.pivot_table(
+        df, values=value_cols, index=diff_col, columns=id_cols
+    ).fillna(0).pct_change().iloc[1:].unstack().unstack(0).reset_index().merge(
+        df[id_cols + value_cols + [diff_col]],
+        on=id_cols, how='right', suffixes=('_diff', ''))
+
+
+
+
+
+
 # get that data
 df = pd.read_csv(os.path.join(
     get_input_dir(), 'LinkedInRecruiter_dffromtobase_merged_gdp.csv'))
@@ -117,22 +138,6 @@ df.query('query_time_round == "2020-07-25 02:00:00"').groupby(
     [x for x in df.columns if 'bin' in x and 'hdi' in x]
 )['flow'].sum().to_csv(
     os.path.join(get_output_dir(), f'july_hdi_flows_{today}.csv'))
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 
