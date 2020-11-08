@@ -80,17 +80,17 @@ def bin_continuous_vars(df, cont_vars):
     return df
 
 
-def weighted_flow1(loc_lvl):
-    df['flow_norm1'] = \
-        df['flow'] / (df[f'orig_{loc_lvl}'] + df[f'dest_{loc_lvl}'])
-    df['flow_norm2'] = \
-        df['flow']**2 / (df[f'orig_{loc_lvl}'] + df[f'dest_{loc_lvl}'])
+def norm_flow(df):
+    df = df.assign(
+        flow_norm1=df['flow'] / (df['users_dest'] + df['users_orig']),
+        flow_norm2=df['flow']**2 / (df['users_dest'] + df['users_orig'])
+    )
     return df
 
 
 def data_validation(df):
     # first check percent difference between the two dates of data collection
-    value_cols = ['flow', 'linkedinusers_orig', 'linkedinusers_dest']
+    value_cols = ['flow', 'users_orig', 'users_dest']
     id_cols = ['countrycode_dest', 'countrycode_orig']
     diff_col = 'query_time_round'
     assert not df[id_cols + [diff_col]].duplicated().values.any()
@@ -103,19 +103,17 @@ def data_validation(df):
     ).fillna(0).pct_change().iloc[1:].unstack().unstack(0).reset_index().merge(
         df[id_cols + value_cols + [diff_col]],
         on=id_cols, how='right', suffixes=('_diff', ''))
-
-
-
-
+    return check_df
 
 
 # get that data
 df = pd.read_csv(os.path.join(
     get_input_dir(), 'LinkedInRecruiter_dffromtobase_merged_gdp.csv'))
-# basic renaming, order doesn't matter here
+# basic renaming
 df.columns = df.columns.str.replace(
     '_x', '_orig').str.replace('_y', '_dest').str.replace(
-        '_from', '_orig').str.replace('_to', '_dest')
+        '_from', '_orig').str.replace(
+            '_to', '_dest').str.replace('linkedin', '')
 df = df.rename(columns={'number_people_who_indicated': 'flow'})
 
 df = merge_region_subregion(df)
@@ -123,21 +121,23 @@ df = merge_region_subregion(df)
 # for naming outputs
 today = datetime.datetime.now().date()
 
+# subset to july data query
+df = df.query('query_time_round == "2020-07-25 02:00:00"')
 # various collapses by region level & date of data collection
-# df.query('query_time_round == "2020-07-25 02:00:00"').groupby(
-#     ['orig_midreg', 'dest_midreg'])['flow'].sum().to_csv(
-#         os.path.join(get_output_dir(), f'july_midregion_flows_{today}.csv'))
+value_vars = ['flow', 'users_orig', 'users_dest']
+norm_flow(
+    df.groupby(['orig_midreg', 'dest_midreg'])[value_vars].sum().reset_index()
+).to_csv(os.path.join(get_output_dir(), f'july_midreg_flows_{today}.csv'))
 
 df = bin_continuous_vars(df, ['hdi', 'gdp'])
+for group_var in ['hdi', 'gdp']:
+    norm_flow(
+        df.groupby(
+            [x for x in df.columns if 'bin' in x and f'{group_var}' in x]
+        )[value_vars].sum().reset_index()
+    ).to_csv(
+        os.path.join(get_output_dir(), f'july_{group_var}_flows_{today}.csv'))
 
-df.query('query_time_round == "2020-07-25 02:00:00"').groupby(
-    [x for x in df.columns if 'bin' in x and 'gdp' in x]
-)['flow'].sum().to_csv(
-    os.path.join(get_output_dir(), f'july_gdp_flows_{today}.csv'))
-df.query('query_time_round == "2020-07-25 02:00:00"').groupby(
-    [x for x in df.columns if 'bin' in x and 'hdi' in x]
-)['flow'].sum().to_csv(
-    os.path.join(get_output_dir(), f'july_hdi_flows_{today}.csv'))
 
 
 
