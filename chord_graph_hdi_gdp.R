@@ -8,13 +8,12 @@ library(migest)
 library(RColorBrewer)
 
 # actual data
-df0 <- read.csv("/Users/scharlottej13/Nextcloud/linkedin_recruiter/outputs/july_hdi_flows_2020-10-21.csv")
-df0$flow_per_100000 <- df0$flow / 100000
+df0 <- read.csv("/Users/scharlottej13/Nextcloud/linkedin_recruiter/outputs/july_gdp_flows_2020-11-04.csv")
 # plot parameters (e.g. colors, etc.)
 color_vector <- setNames(brewer.pal(5, 'RdYlBu'), c("low", "low-middle", "middle", "middle-high", "high"))
 
 #default chord diagram
-chord_df <- df0 %>% select(maxhdi_orig_bin, maxhdi_dest_bin, flow_per_100000)
+chord_df <- df0 %>% select(maxgdp_orig_bin, maxgdp_dest_bin, flow_norm2)
 chordDiagram(x = chord_df)
 #plot parameters
 circos.clear()
@@ -39,13 +38,13 @@ circos.trackPlotRegion(
     # Add ticks & labels
     circos.axis(
       h = "top", 
-      major.at = seq(from = 0, to = xlim[2], by = ifelse(test = xlim[2]>5, yes = 2, no = 1)),
+      major.at = seq(from = 0, to = xlim[2], by = ifelse(test = xlim[2]>50, yes = 50, no = 10)),
       minor.ticks = 1, 
       major.tick.percentage = 0.5,
       labels.niceFacing = FALSE)
   }
 )
 
-dev.copy2pdf(file ="chord_plot_hdi.pdf", height=10, width=10)
-file.show("chord_plot_hdi.pdf")
+dev.copy2pdf(file ="chord_plot_gdp_norm.pdf", height=10, width=10)
+file.show("chord_plot_gdp_norm.pdf")
 
