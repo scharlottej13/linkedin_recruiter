@@ -26,7 +26,7 @@ fit2 <- glm.nb(
 # closer to Cohen paper w/ indicator variables
 # they did log10 (why?!?) t'form (no poisson/nb) which is weird yeah?
 wide_vars <- as.data.frame(model.matrix(~ country_from + country_to - 1, data=df))
-model_df <- bind_cols(wide_vars, df %>% select(number_people_who_indicated, linkedinusers_from, linkedinusers_to))
+model_df <- bind_cols(wide_vars, df %>% dplyr::select(number_people_who_indicated, linkedinusers_from, linkedinusers_to))
 # this will surely fail
 fit <- glm(
   number_people_who_indicated ~ log(linkedinusers_from) + log(linkedinusers_to) + .,
@@ -34,6 +34,7 @@ fit <- glm(
   data=model_df
 )
 plot(fit$y, fit$fitted.values)
+ggplot()
 # WOW it works and is *way* better, only a couple outliers
 #    country_from   country_to     number_people_who_indicated
        # India        United States  84545
