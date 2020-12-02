@@ -12,7 +12,7 @@ BASE_DIR <- "/Users/scharlottej13/Nextcloud/linkedin_recruiter/outputs/"
 # set this manually
 DATE <- "2020-12-02"
 
-create_chord_diagram <- function(chord_df, color_vector, meta_col, val_col) {
+create_chord_diagram <- function(chord_df, color_vector, meta_col, val_col, axis_args=c(180, 50, 20, 5)) {
   chordDiagram(x = chord_df)
   circos.clear()
   circos.par(start.degree = 90, gap.degree = 4, track.margin = c(-0.1, 0.1), points.overflow.warning = FALSE)
@@ -39,8 +39,8 @@ create_chord_diagram <- function(chord_df, color_vector, meta_col, val_col) {
       # Add ticks & labels
       circos.axis(
         h = "top", 
-        major.at = seq(from = 0, to = xlim[2], by = ifelse(xlim[2]>180, yes = 50, no = 20)),
-        minor.ticks = 5,
+        major.at = seq(from = 0, to = xlim[2], by = ifelse(xlim[2]>axis_args[1], yes = axis_args[2], no = axis_args[3])),
+        minor.ticks = axis_args[4],
         labels.niceFacing = FALSE)
     }
   )
@@ -50,7 +50,6 @@ create_chord_diagram <- function(chord_df, color_vector, meta_col, val_col) {
   }
   filename = paste0(BASE_DIR, "chord_plot_", meta_col, "_", DATE, ".pdf")
   dev.copy2pdf(file = filename, height=12, width=10)
-  file.show(filename)
 }
 
 color_vector <- setNames(brewer.pal(5, "RdYlBu"), c("Low", "Low-middle", "Middle", "Middle-high", "High"))
@@ -59,4 +58,3 @@ for (measure in c("gdp", "hdi")) {
   chord_df <- df %>% filter(query_date == "2020-07-25") %>% select(c(contains(measure), flow_norm))
   create_chord_diagram(chord_df, color_vector, measure, "flow_norm")
 }
-
