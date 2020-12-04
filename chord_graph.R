@@ -6,16 +6,16 @@ library(circlize)
 library(dplyr)
 library(migest)
 
-BASE_DIR <- "/Users/scharlottej13/Nextcloud/linkedin_recruiter/"
+# BASE_DIR <- normalizePath("/Users/scharlottej13/Nextcloud/linkedin_recruiter/")
+BASE_DIR <- normalizePath("N:/johnson/linkedin_recruiter/")
 # set this manually
-DATE <- "2020-12-02"
+DATE <- "2020-12-04"
 
-df1 <- read.csv(paste0(BASE_DIR, "inputs/chord_labels_colors.csv")) %>% arrange(order1)
+df1 <- read.csv(normalizePath(paste0(BASE_DIR, "inputs/chord_labels_colors.csv"))) %>% arrange(order1)
 color_vector <- setNames(df1$col1, df1$region)
 
-df <- read.csv(paste0(BASE_DIR, "outputs/midreg_flows_", DATE, ".csv"))
-df$flow_norm <- df$flow_norm / 100
-chord_df <- df %>% select(orig_midreg, dest_midreg, flow_norm)
+df <- read.csv(normalizePath(paste0(BASE_DIR, "outputs/midreg_flows_", DATE, ".csv")))
+chord_df <- df %>% filter(query_date == "2020-07-25") %>% select(orig_midreg, dest_midreg, percent)
   
 chordDiagram(x = chord_df)
 circos.clear()
@@ -46,15 +46,13 @@ circos.trackPlotRegion(
     # Add ticks & labels
     circos.axis(
       h = "top", 
-      major.at = seq(from = 0, to = xlim[2], by = ifelse(xlim[2]>100, yes = 20, no = 10)), 
-      minor.ticks = 5, 
+      major.at = seq(from = 0, to = xlim[2], by = 50), 
+      minor.ticks = 25, 
       labels.niceFacing = FALSE)
   }
 )
-text(x = -.6, y = 1.2, cex = 1.8, labels = "Migration flows by region")
-if (grepl("norm", val_col)) {
-  text(x = -.6, y = 1.12, cex = 1.5, labels = "per 1,000 LinkedIn users in origin")
-}
-filename = paste0(BASE_DIR, "/outputs/chord_plot_region", "_", DATE, ".pdf")
-dev.copy2pdf(file = filename, height=10, width=10)
+text(x = 0, y = 1.2, cex = 1.8, labels = "International migration flows as percent of origin")
+
+filename = normalizePath(paste0(BASE_DIR, "outputs/chord_plot_region_percent", "_", DATE, ".pdf"))
+dev.copy2pdf(file = filename, height=12, width=15)
 
