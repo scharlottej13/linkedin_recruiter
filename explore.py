@@ -105,8 +105,15 @@ def calcuate_distance(df):
 def norm_flow(df, loc):
     df = df.assign(
         flow_rate=(df['flow'] / df['users_orig']) * 100000,
-        total=(df.groupby(f'orig_{loc}'))['flow'].transform(sum))
+        total=df.groupby([f'orig_{loc}', 'query_date'])['flow'].transform(sum))
     df['percent'] = (df['flow']/df['total']) * 100
+    # need another value, where you loop through the values of orig/dest
+    # and the total is that sum, then it's a percent of that total
+    for value in df[f'orig_{loc}'].unique():
+        df['total'] = df.loc[
+            (df['orig_{loc}'] == value) | (df[f'dest_{loc}'] == value]),
+        'flow'].sum()
+    # ^ something like that
     return df
 
 
@@ -155,6 +162,8 @@ df = merge_region_subregion(df)
 today = datetime.datetime.now().date()
 
 # OK what do we need to save?
+# TO DO
+# build in archive saving
 # data_validation(df).to_csv(
 #     os.path.join(get_output_dir(), f'compare_to_july_query_{today}.csv'),
 #     index=False)
