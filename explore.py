@@ -8,7 +8,8 @@ import pandas as pd
 import numpy as np
 import os
 import datetime
-from countryinfo import CountryInfo
+from collections import defaultdict
+# from countryinfo import CountryInfo
 
 
 def _get_working_dir():
@@ -69,17 +70,23 @@ def merge_region_subregion(df):
 def bin_continuous_vars(df, cont_vars):
     if type(cont_vars) is not list:
         cont_vars = list(cont_vars)
-    cont_var_cols = []
+    cont_var_col_map = defaultdict(list)
     for var in cont_vars:
-        cont_var_cols = cont_var_cols + \
-            [x for x in df.columns if var in x]
-    assert ((len(cont_var_cols) > 0) & (np.mod(len(cont_var_cols), 2) == 0)), \
-        "Need origin and destination, one is missing"
-    for col in cont_var_cols:
+        cont_var_col_map.update({var: [x for x in df.columns if var in x]})
+        columns = cont_var_col_map[var]
+        print(f"Found these columns to bin: {columns}")
+        assert ((len(columns) > 0) & (np.mod(len(columns), 2) == 0)), \
+            "Need origin and destination, one is missing"
+    for var, col_list in cont_var_col_map.items():
         labels = ['Low', 'Low-middle', 'Middle', 'Middle-high', 'High']
-        df[f'{col}_bin'] = pd.qcut(
-            df[f'{col}'], q=5, labels=labels
-        )
+        for col in col_list:
+            if 'dest' in col:
+                prefix = 'dest'
+            elif 'orig' in col:
+                prefix = 'orig'
+            else:
+                KeyError
+            df[f'{prefix}_{var}'] = pd.qcut(df[f'{col}'], q=5, labels=labels)
     return df
 
 
@@ -95,8 +102,12 @@ def calcuate_distance(df):
     raise NotImplementedError
 
 
-def norm_flow(df):
-    return df.assign(flow_norm=(df['flow'] / df['users_orig']) * 100000)
+def norm_flow(df, loc):
+    df = df.assign(
+        flow_rate=(df['flow'] / df['users_orig']) * 100000,
+        total=(df.groupby(f'orig_{loc}'))['flow'].transform(sum))
+    df['percent'] = (df['flow']/df['total']) * 100
+    return df
 
 
 def data_validation(df, baseline='2020-07-25', diff_col='query_date'):
@@ -144,26 +155,25 @@ df = merge_region_subregion(df)
 today = datetime.datetime.now().date()
 
 # OK what do we need to save?
-data_validation(df).to_csv(
-    os.path.join(get_output_dir(), f'compare_to_july_query_{today}.csv'),
-    index=False)
+# data_validation(df).to_csv(
+#     os.path.join(get_output_dir(), f'compare_to_july_query_{today}.csv'),
+#     index=False)
 
 # by "midregion"
 value_vars = ['flow', 'users_orig', 'users_dest']
 norm_flow(
     df.groupby(
         ['orig_midreg', 'dest_midreg', 'query_date']
-    )[value_vars].sum().reset_index()
+    )[value_vars].sum().reset_index(), 'midreg'
 ).to_csv(os.path.join(get_output_dir(), f'midreg_flows_{today}.csv'),
          index=False)
 
 # by HDI, GDP
 df = bin_continuous_vars(df, ['hdi', 'gdp'])
 for grp_var in ['hdi', 'gdp']:
-    id_cols = [x for x in df.columns if 'bin' in x and f'{grp_var}' in x] + \
-            ['query_date']
+    id_cols = [f'orig_{grp_var}', f'dest_{grp_var}', 'query_date']
     norm_flow(
-        df.groupby(id_cols)[value_vars].sum().reset_index()
+        df.groupby(id_cols)[value_vars].sum().reset_index(), grp_var
     ).to_csv(
         os.path.join(get_output_dir(), f'{grp_var}_flows_{today}.csv'),
         index=False)
