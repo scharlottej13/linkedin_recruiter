@@ -13,15 +13,14 @@ from collections import defaultdict
 
 
 def _get_working_dir():
-    n_drive = os.path.abspath("N:/johnson/linkedin_recruiter")
-    nextcloud = os.path.abspath(
-        "/Users/scharlottej13/Nextcloud/linkedin_recruiter")
-    if os.path.exists(n_drive):
-        return n_drive
-    elif os.path.exists(nextcloud):
-        return nextcloud
+    pc = os.path.abspath("N:/johnson/linkedin_recruiter")
+    mac = os.path.abspath("/Users/scharlottej13/Nextcloud/linkedin_recruiter")
+    if os.path.exists(pc):
+        return
+    elif os.path.exists(mac):
+        return mac
     else:
-        AssertionError, f"could not find {n_drive} or {nextcloud}"
+        AssertionError, f"could not find {pc} or {mac}"
 
 
 def get_input_dir():
@@ -93,7 +92,7 @@ def bin_continuous_vars(df, cont_vars):
 def calcuate_distance(df):
     """Calculate great ciricle distance between capital cities by country."""
     # https://pypi.org/project/countryinfo/#capital_latlng
-    df = df.assign(capitol_latlng_from=lambda x: CountryInfo('country_from'))
+    # df = df.assign(capitol_latlng_from=lambda x: CountryInfo('country_from'))
     # and so on
     # country = CountryInfo('Singapore')
     # country.capital_latlng()
@@ -103,17 +102,23 @@ def calcuate_distance(df):
 
 
 def norm_flow(df, loc):
+    # assuming these are the id variables
+    assert not df.duplicated(
+        [f'orig_{loc}', f'dest_{loc}', 'query_date']
+    ).values.any()
     df = df.assign(
         flow_rate=(df['flow'] / df['users_orig']) * 100000,
         total=df.groupby([f'orig_{loc}', 'query_date'])['flow'].transform(sum))
     df['percent'] = (df['flow']/df['total']) * 100
-    # need another value, where you loop through the values of orig/dest
-    # and the total is that sum, then it's a percent of that total
-    for value in df[f'orig_{loc}'].unique():
-        df['total'] = df.loc[
-            (df['orig_{loc}'] == value) | (df[f'dest_{loc}'] == value]),
-        'flow'].sum()
-    # ^ something like that
+    return df
+
+
+def aggregate_locs(df, loc):
+    df = df.groupby(
+        [f'orig_{loc}', f'dest_{loc}', 'query_date']
+    )['flow'].sum().reset_index()
+    df['total_orig'] = df.groupby(
+        [f'orig_{loc}', 'query_date'])['flow'].transform(sum)
     return df
 
 
@@ -168,21 +173,14 @@ today = datetime.datetime.now().date()
 #     os.path.join(get_output_dir(), f'compare_to_july_query_{today}.csv'),
 #     index=False)
 
+
 # by "midregion"
-value_vars = ['flow', 'users_orig', 'users_dest']
-norm_flow(
-    df.groupby(
-        ['orig_midreg', 'dest_midreg', 'query_date']
-    )[value_vars].sum().reset_index(), 'midreg'
-).to_csv(os.path.join(get_output_dir(), f'midreg_flows_{today}.csv'),
-         index=False)
+aggregate_locs(df, 'midreg').to_csv(
+    os.path.join(get_output_dir(), f'midreg_flows_{today}.csv'), index=False)
 
 # by HDI, GDP
-df = bin_continuous_vars(df, ['hdi', 'gdp'])
-for grp_var in ['hdi', 'gdp']:
-    id_cols = [f'orig_{grp_var}', f'dest_{grp_var}', 'query_date']
-    norm_flow(
-        df.groupby(id_cols)[value_vars].sum().reset_index(), grp_var
-    ).to_csv(
-        os.path.join(get_output_dir(), f'{grp_var}_flows_{today}.csv'),
-        index=False)
+# df = bin_continuous_vars(df, ['hdi', 'gdp'])
+# for grp_var in ['hdi', 'gdp']:
+#     aggregate_locs(df, grp_var).to_csv(
+#         os.path.join(get_output_dir(), f'{grp_var}_flows_{today}.csv'),
+#         index=False)
