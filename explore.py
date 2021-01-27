@@ -8,7 +8,11 @@ import pandas as pd
 import numpy as np
 import os
 import datetime
+import json
 from collections import defaultdict
+from geopy.geocoders import Nominatim
+from geopy.extra.rate_limiter import RateLimiter
+from haversine import haversine
 # from countryinfo import CountryInfo
 
 
@@ -89,16 +93,32 @@ def bin_continuous_vars(df, cont_vars):
     return df
 
 
-def calcuate_distance(df):
-    """Calculate great ciricle distance between capital cities by country."""
-    # https://pypi.org/project/countryinfo/#capital_latlng
-    # df = df.assign(capitol_latlng_from=lambda x: CountryInfo('country_from'))
-    # and so on
-    # country = CountryInfo('Singapore')
-    # country.capital_latlng()
-    # # returns array, approx latitude and longitude for country capital
-    # [1.357107, 103.819499]
-    raise NotImplementedError
+def add_distance(df, min_wait=1, use_cache=True):
+    cache_path = os.path.join(get_input_dir(), 'latlong.json')
+    if not use_cache:
+        # need user_agent per ToS of Nominatim
+        # https://www.openstreetmap.org/copyright
+        geolocator = Nominatim(user_agent='scharlottej13@gmail.com')
+        # wrap in automatic error handling for timeout errors
+        geocode = RateLimiter(geolocator.geocode, min_delay_seconds=min_wait)
+        geo_dict = defaultdict(tuple)
+        for country in df.country_dest.unique():
+            loc = geocode(country)
+            geo_dict.update({country: (loc.latitude, loc.longitude)})
+        # cache result, do not test the gods of osm
+        with open(cache_path, 'w')) as fp:
+            json.dump(geo_dict, fp)
+    else:
+        assert os.path.exists(cache_path)
+        with open(cache_path, 'r') as fp:
+            geo_dict = json.load(fp)
+
+    df = df.assign(
+        geoloc_dest = df['country_dest'].map(geo_dict),
+        geoloc_orign = df['country_orig'].map(geo_dict),
+        distance = lambda x: haversine(x['geoloc_dest'], x['geoloc_orig'])
+    )
+    return df
 
 
 def norm_flow(df, loc):
@@ -151,7 +171,7 @@ def data_validation(df, baseline='2020-07-25', diff_col='query_date'):
 # TO DO add this to argparse or something
 # right now I just change the filename manually
 df = pd.read_csv(os.path.join(
-    get_input_dir(), 'LinkedInRecruiter_dffromtobase_merged_gdp_5.csv'))
+    get_input_dir(), 'LinkedInRecruiter_dffromtobase_merged_gdp_10.csv'))
 # basic renaming
 df.columns = df.columns.str.replace(
     '_x', '_orig').str.replace('_y', '_dest').str.replace(
