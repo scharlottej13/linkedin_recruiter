@@ -7,19 +7,19 @@ Created on Fri Oct  9 10:39:43 2020
 import pandas as pd
 import numpy as np
 import os
+from os import pipe, path
 import datetime
 import json
 from collections import defaultdict
 from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
 from haversine import haversine
-# from countryinfo import CountryInfo
 
 
 def _get_working_dir():
-    pc = os.path.abspath("N:/johnson/linkedin_recruiter")
-    mac = os.path.abspath("/Users/scharlottej13/Nextcloud/linkedin_recruiter")
-    if os.path.exists(pc):
+    pc = path.abspath("N:/johnson/linkedin_recruiter")
+    mac = path.abspath("/Users/scharlottej13/Nextcloud/linkedin_recruiter")
+    if path.exists(pc):
         return
     elif os.path.exists(mac):
         return mac
@@ -28,16 +28,26 @@ def _get_working_dir():
 
 
 def get_input_dir():
-    return os.path.join(_get_working_dir(), 'inputs')
+    return path.join(_get_working_dir(), 'inputs')
 
 
 def get_output_dir():
-    return os.path.join(_get_working_dir(), 'outputs')
+    return path.join(_get_working_dir(), 'outputs')
 
+
+def standardize_col_names():
+    df.columns = df.columns.str.replace(
+        '_x', '_orig').str.replace('_y', '_dest').str.replace(
+        '_from', '_orig').str.replace(
+        '_to', '_dest').str.replace('linkedin', '')
+    df = df.rename(columns={'number_people_who_indicated': 'flow'})
+    # remove time from query_time_round column
+    df['query_date'] = df['query_time_round'].str[:-9]
+    return df
 
 def merge_region_subregion(df):
     loc_mapper = pd.read_csv(
-        os.path.join(get_input_dir(), 'UNSD-methodology.csv'),
+        path.join(get_input_dir(), 'UNSD-methodology.csv'),
         encoding='latin1')
     loc_mapper['ISO-alpha3 Code'] = loc_mapper['ISO-alpha3 Code'].str.lower()
     # manual additions missing from UNSD list
@@ -54,7 +64,7 @@ def merge_region_subregion(df):
         'ISO-alpha3 Code')['Region Name'].to_dict()
     # paper from Abel & Cohen has different groups, call them "midregions"
     midreg_dict = pd.read_csv(
-        os.path.join(get_input_dir(), 'abel_regions.csv')
+        path.join(get_input_dir(), 'abel_regions.csv')
     ).set_index('subregion_from')['midreg_from'].to_dict()
     midreg_dict.update({'Micronesia': 'Oceania'})
     # map from country to region, subregion, and midregion
@@ -93,8 +103,14 @@ def bin_continuous_vars(df, cont_vars):
     return df
 
 
+def get_haversine_distance(df):
+    df['distance'] = df.apply(
+        lambda x: haversine(x['geoloc_orig'], x['geoloc_dest']), axis=1)
+    return df
+
+
 def add_distance(df, min_wait=1, use_cache=True):
-    cache_path = os.path.join(get_input_dir(), 'latlong.json')
+    cache_path = path.join(get_input_dir(), 'latlong.json')
     if not use_cache:
         # need user_agent per ToS of Nominatim
         # https://www.openstreetmap.org/copyright
@@ -106,19 +122,17 @@ def add_distance(df, min_wait=1, use_cache=True):
             loc = geocode(country)
             geo_dict.update({country: (loc.latitude, loc.longitude)})
         # cache result, do not test the gods of osm
-        with open(cache_path, 'w')) as fp:
+        with open(cache_path, 'w') as fp:
             json.dump(geo_dict, fp)
     else:
-        assert os.path.exists(cache_path)
+        assert path.exists(cache_path)
         with open(cache_path, 'r') as fp:
             geo_dict = json.load(fp)
 
-    df = df.assign(
-        geoloc_dest = df['country_dest'].map(geo_dict),
-        geoloc_orign = df['country_orig'].map(geo_dict),
-        distance = lambda x: haversine(x['geoloc_dest'], x['geoloc_orig'])
-    )
-    return df
+    return (df.assign(
+        geoloc_dest=df['country_dest'].map(geo_dict),
+        geoloc_orig=df['country_orig'].map(geo_dict))
+            .pipe(get_haversine_distance))
 
 
 def norm_flow(df, loc):
@@ -168,20 +182,12 @@ def data_validation(df, baseline='2020-07-25', diff_col='query_date'):
 
 
 # get that data
-# TO DO add this to argparse or something
 # right now I just change the filename manually
-df = pd.read_csv(os.path.join(
-    get_input_dir(), 'LinkedInRecruiter_dffromtobase_merged_gdp_10.csv'))
-# basic renaming
-df.columns = df.columns.str.replace(
-    '_x', '_orig').str.replace('_y', '_dest').str.replace(
-        '_from', '_orig').str.replace(
-            '_to', '_dest').str.replace('linkedin', '')
-df = df.rename(columns={'number_people_who_indicated': 'flow'})
-# remove time from query_time_round column
-df['query_date'] = df['query_time_round'].str[:-9]
-
-df = merge_region_subregion(df)
+df = (
+    pd.read_csv(path.join(get_input_dir(), 'LinkedInRecruiter_dffromtobase_merged_gdp_10.csv'))
+    .pipe(standardize_col_names)
+    .pipe(merge_region_subregion)
+)
 
 # for naming outputs
 today = datetime.datetime.now().date()
@@ -190,17 +196,17 @@ today = datetime.datetime.now().date()
 # TO DO
 # build in archive saving
 # data_validation(df).to_csv(
-#     os.path.join(get_output_dir(), f'compare_to_july_query_{today}.csv'),
+#     path.join(get_output_dir(), f'compare_to_july_query_{today}.csv'),
 #     index=False)
 
 
 # by "midregion"
 aggregate_locs(df, 'midreg').to_csv(
-    os.path.join(get_output_dir(), f'midreg_flows_{today}.csv'), index=False)
+    path.join(get_output_dir(), f'midreg_flows_{today}.csv'), index=False)
 
 # by HDI, GDP
 # df = bin_continuous_vars(df, ['hdi', 'gdp'])
 # for grp_var in ['hdi', 'gdp']:
 #     aggregate_locs(df, grp_var).to_csv(
-#         os.path.join(get_output_dir(), f'{grp_var}_flows_{today}.csv'),
+#         path.join(get_output_dir(), f'{grp_var}_flows_{today}.csv'),
 #         index=False)
