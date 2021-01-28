@@ -1,48 +1,25 @@
 # gravity model
 library(gravity)
 library(tidyverse)
+library(MASS)
 
 # read in data from Tom (thanks Tom!)
-df <- read.csv("/Users/scharlottej13/Nextcloud/linkedin_recruiter/inputs/LinkedInRecruiter_dffromtobase_merged_gdp.csv")
-# only keep july, october has an issue with CAR
-df <- df %>% filter(query_time_round == "2020-07-25 02:00:00")
+df <- read.csv("/Users/scharlottej13/Nextcloud/linkedin_recruiter/outputs/model_input_2021-01-28.csv")
+# drop some rows
+df <- df %>% dplyr::filter(query_date == "2020-07-25" & distance > 0)
 # already has no zeros
-zeros <- row_number(df %>% filter(number_people_who_indicated == 0))
+# turn this into a check god knows how to do that in R
+zeros <- row_number(df %>% filter(flow == 0))
 
-# for later:
-# http://www.cepii.fr/PDF_PUB/wp/2011/wp2011-25.pdf
-# http://www.cepii.fr/CEPII/en/publications/wp/abstract.asp?NoDoc=3877
-# https://cran.r-project.org/web/packages/gravity/vignettes/crash-course-on-gravity-models.html
-fit <- glm(
-  number_people_who_indicated ~ log(linkedinusers_from) + log(linkedinusers_to),
-  family="poisson",
-  data=df
-)
-require(MASS)
-fit2 <- glm.nb(
-  number_people_who_indicated ~ log(linkedinusers_from) + log(linkedinusers_to),
-  data=df
-)
-# closer to Cohen paper w/ indicator variables
-# they did log10 (why?!?) t'form (no poisson/nb) which is weird yeah?
-wide_vars <- as.data.frame(model.matrix(~ country_from + country_to - 1, data=df))
-model_df <- bind_cols(wide_vars, df %>% dplyr::select(number_people_who_indicated, linkedinusers_from, linkedinusers_to))
-# this will surely fail
-fit <- glm(
-  number_people_who_indicated ~ log(linkedinusers_from) + log(linkedinusers_to) + .,
-  family="poisson",
-  data=model_df
-)
+run_cohen_model <- function(df, x_vars, y_var=c("flow")) {
+  wide_vars <- as.data.frame(model.matrix(~ country_dest + country_orig - 1, data=df))
+  df[x_vars + y_var] <- log10(df[x_vars + y_var])
+  fit <- lm(y_var ~ x_vars + ., data=bind_cols(wide_vars, df[x_vars + y_var]))
+}
+
+fit1 <- run_cohen_model(df, c("users_orig", "users_dest", "distance"))
+df %>% dplyr::filter(area_org > 0)
+fit2 <- run_cohen_model(df, c("users_orig", "users_dest", "distance", "area_orig", "area_dest"))
+
 plot(fit$y, fit$fitted.values)
 ggplot()
-# WOW it works and is *way* better, only a couple outliers
-#    country_from   country_to     number_people_who_indicated
-       # India        United States  84545
-       # India United Arab Emirates  114654
-       # India               Canada  89995
-## TO DO!!
-# the log area (square kilometers) of the origin
-# the log area (square kilometers) of the destination
-# the log great circle distance (kilometers) from the capital
-# of the origin to the capital of the destination
-# the source of the migration data, and “neighbor”
