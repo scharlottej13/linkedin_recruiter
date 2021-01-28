@@ -20,10 +20,10 @@ def _get_working_dir():
     mac = path.abspath("/Users/scharlottej13/Nextcloud/linkedin_recruiter")
     if path.exists(pc):
         return
-    elif os.path.exists(mac):
+    elif path.exists(mac):
         return mac
     else:
-        AssertionError, f"could not find {pc} or {mac}"
+        raise AssertionError(f"could not find {pc} or {mac}")
 
 
 def get_input_dir():
@@ -35,15 +35,17 @@ def get_output_dir():
 
 
 def standardize_col_names(df):
-    df.columns = df.columns.str.replace(
-        '_x', '_orig').str.replace('_y', '_dest').str.replace(
-        '_from', '_orig').str.replace(
-        '_to', '_dest').str.replace('linkedin', '')
-    df = df.rename(columns={'number_people_who_indicated': 'flow'})
-    # remove time from query_time_round column
-    df['query_date'] = df['query_time_round'].str[:-9]
-    df.drop('Unnamed: 0', axis=1, errors='ignore', inplace=True)
-    return df
+    replace_dict = {'_x': '_orig', '_y': '_dest', '_from': '_orig',
+                    '_to': '_dest', 'linkedin': ''}
+    for k, v in replace_dict.items():
+        df.columns = df.columns.str.replace(k, v)
+    # df.columns = df.columns.str.replace(
+    #     '_x', '_orig').str.replace('_y', '_dest').str.replace(
+    #     '_from', '_orig').str.replace(
+    #     '_to', '_dest').str.replace('linkedin', '')
+    return (df.rename(columns={'number_people_who_indicated': 'flow'})
+            .assign(query_date=df['query_time_round'].str[:-9])
+            .drop(['Unnamed: 0', 'query_time_round'], axis=1, errors='ignore'))
 
 
 def prep_country_area():
@@ -113,7 +115,7 @@ def bin_continuous_vars(df, cont_vars):
             elif 'orig' in col:
                 prefix = 'orig'
             else:
-                KeyError
+                raise KeyError
             df[f'{prefix}_{var}'] = pd.qcut(df[f'{col}'], q=5, labels=labels)
     return df
 
@@ -165,7 +167,7 @@ def norm_flow(df, loc):
     df = df.assign(
         flow_rate=(df['flow'] / df['users_orig']) * 100000,
         total=df.groupby([f'orig_{loc}', 'query_date'])['flow'].transform(sum))
-    df['percent'] = (df['flow']/df['total']) * 100
+    df['percent'] = (df['flow'] / df['total']) * 100
     return df
 
 
@@ -174,7 +176,7 @@ def aggregate_locs(df, loc):
         [f'orig_{loc}', f'dest_{loc}', 'query_date']
     )['flow'].sum().reset_index().assign(
         total_orig=df.groupby(
-        [f'orig_{loc}', 'query_date'])['flow'].transform(sum)
+            [f'orig_{loc}', 'query_date'])['flow'].transform(sum)
     )
 
 
@@ -195,10 +197,10 @@ def data_validation(df, baseline='2020-07-25', diff_col='query_date'):
         check_df = pd.pivot_table(
             check_df, values=value_cols, index=diff_col, columns=id_cols
         ).fillna(0).pct_change().iloc[1:].unstack().unstack(0).reset_index(
-            ).merge(
-                check_df[id_cols + value_cols + [diff_col]],
-                on=id_cols, how='right', suffixes=('_diff', '')
-            )
+        ).merge(
+            check_df[id_cols + value_cols + [diff_col]],
+            on=id_cols, how='right', suffixes=('_diff', '')
+        )
         dfs.append(check_df)
     return pd.concat(dfs)
 
@@ -207,9 +209,9 @@ def data_validation(df, baseline='2020-07-25', diff_col='query_date'):
 # right now I just change the filename manually
 df = (
     pd.read_csv(path.join(get_input_dir(), 'LinkedInRecruiter_dffromtobase_merged_gdp_10.csv'))
-    .pipe(standardize_col_names)
-    .pipe(merge_region_subregion)
-    .pipe(add_distance)
+        .pipe(standardize_col_names)
+        .pipe(merge_region_subregion)
+        .pipe(add_distance)
 )
 
 # for naming outputs
