@@ -6,10 +6,9 @@ Created on Fri Oct  9 10:39:43 2020
 
 import pandas as pd
 import numpy as np
-import os
-from os import pipe, path
 import datetime
 import json
+from os import pipe, path
 from collections import defaultdict
 from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
@@ -35,7 +34,7 @@ def get_output_dir():
     return path.join(_get_working_dir(), 'outputs')
 
 
-def standardize_col_names():
+def standardize_col_names(df):
     df.columns = df.columns.str.replace(
         '_x', '_orig').str.replace('_y', '_dest').str.replace(
         '_from', '_orig').str.replace(
@@ -43,13 +42,30 @@ def standardize_col_names():
     df = df.rename(columns={'number_people_who_indicated': 'flow'})
     # remove time from query_time_round column
     df['query_date'] = df['query_time_round'].str[:-9]
+    df.drop('Unnamed: 0', axis=1, errors='ignore', inplace=True)
     return df
+
+
+def prep_country_area():
+    """Clean up file with country areas in sq km.
+    Downloaded data from World Bank
+    https://data.worldbank.org/indicator/AG.LND.TOTL.K2
+    """
+    # TO DO Tom merges on population, could make sure it's all from
+    # the same place and download straight from World Bank too
+    df = pd.read_csv(path.join(get_input_dir(), 'worldbank_sqkm_2021_01_28.csv'))
+    print(f"World Bank Data {df.iloc[-1][0]}")
+    df = df.dropna(axis=0, subset=['Country Code']).assign(
+        iso3=df['Country Code'].str.lower())
+    # the most recent year w/ data for all countries is 2017
+    # close enough for now, but could update this later
+    df['area'] = df['2017 [YR2017]'].copy()
+    return df.set_index('iso3')['area'].to_dict()
+
 
 def merge_region_subregion(df):
     loc_mapper = pd.read_csv(
-        path.join(get_input_dir(), 'UNSD-methodology.csv'),
-        encoding='latin1')
-    loc_mapper['ISO-alpha3 Code'] = loc_mapper['ISO-alpha3 Code'].str.lower()
+        path.join(get_input_dir(), 'UNSD-methodology.csv'), encoding='latin1')
     # manual additions missing from UNSD list
     loc_mapper = loc_mapper.append(
         pd.DataFrame(
@@ -57,17 +73,16 @@ def merge_region_subregion(df):
              'Sub-region Name': ['Eastern Asia', 'Micronesia'],
              'ISO-alpha3 Code': ['twn', 'nru']}
         ), ignore_index=True)
+    loc_mapper = loc_mapper.assign(iso3=loc_mapper['ISO-alpha3 Code'].str.lower())
     # create some dictionaries for mapping
-    iso3_subreg = loc_mapper.set_index(
-        'ISO-alpha3 Code')['Sub-region Name'].to_dict()
-    iso3_reg = loc_mapper.set_index(
-        'ISO-alpha3 Code')['Region Name'].to_dict()
+    iso3_subreg = loc_mapper.set_index('iso3')['Sub-region Name'].to_dict()
+    iso3_reg = loc_mapper.set_index('iso3')['Region Name'].to_dict()
     # paper from Abel & Cohen has different groups, call them "midregions"
     midreg_dict = pd.read_csv(
         path.join(get_input_dir(), 'abel_regions.csv')
     ).set_index('subregion_from')['midreg_from'].to_dict()
     midreg_dict.update({'Micronesia': 'Oceania'})
-    # map from country to region, subregion, and midregion
+    # map from country to region, subregion, and "midregion"
     for drctn in ['orig', 'dest']:
         df[f'{drctn}_reg'] = df[f'countrycode_{drctn}'].map(iso3_reg)
         df[f'{drctn}_subreg'] = df[f'countrycode_{drctn}'].map(iso3_subreg)
@@ -104,9 +119,8 @@ def bin_continuous_vars(df, cont_vars):
 
 
 def get_haversine_distance(df):
-    df['distance'] = df.apply(
-        lambda x: haversine(x['geoloc_orig'], x['geoloc_dest']), axis=1)
-    return df
+    return df.assign(distance=df.apply(
+        lambda x: haversine(x['geoloc_orig'], x['geoloc_dest']), axis=1))
 
 
 def add_distance(df, min_wait=1, use_cache=True):
@@ -122,16 +136,24 @@ def add_distance(df, min_wait=1, use_cache=True):
             loc = geocode(country)
             geo_dict.update({country: (loc.latitude, loc.longitude)})
         # cache result, do not test the gods of osm
+        print("Saving results to cache")
         with open(cache_path, 'w') as fp:
             json.dump(geo_dict, fp)
     else:
         assert path.exists(cache_path)
+        print("Reading from cache")
         with open(cache_path, 'r') as fp:
             geo_dict = json.load(fp)
 
+    # grab square km from World Bank
+    wb_dict = prep_country_area()
+
     return (df.assign(
+        # could also use an apply? I think this looks cleaner
         geoloc_dest=df['country_dest'].map(geo_dict),
-        geoloc_orig=df['country_orig'].map(geo_dict))
+        geoloc_orig=df['country_orig'].map(geo_dict),
+        area_dest=df['countrycode_dest'].map(wb_dict),
+        area_orig=df['countrycode_orig'].map(wb_dict))
             .pipe(get_haversine_distance))
 
 
@@ -148,12 +170,12 @@ def norm_flow(df, loc):
 
 
 def aggregate_locs(df, loc):
-    df = df.groupby(
+    return df.groupby(
         [f'orig_{loc}', f'dest_{loc}', 'query_date']
-    )['flow'].sum().reset_index()
-    df['total_orig'] = df.groupby(
+    )['flow'].sum().reset_index().assign(
+        total_orig=df.groupby(
         [f'orig_{loc}', 'query_date'])['flow'].transform(sum)
-    return df
+    )
 
 
 def data_validation(df, baseline='2020-07-25', diff_col='query_date'):
@@ -187,6 +209,7 @@ df = (
     pd.read_csv(path.join(get_input_dir(), 'LinkedInRecruiter_dffromtobase_merged_gdp_10.csv'))
     .pipe(standardize_col_names)
     .pipe(merge_region_subregion)
+    .pipe(add_distance)
 )
 
 # for naming outputs
@@ -199,10 +222,11 @@ today = datetime.datetime.now().date()
 #     path.join(get_output_dir(), f'compare_to_july_query_{today}.csv'),
 #     index=False)
 
+df.to_csv(path.join(get_output_dir(), f'model_input_{today}.csv'), index=False)
 
 # by "midregion"
-aggregate_locs(df, 'midreg').to_csv(
-    path.join(get_output_dir(), f'midreg_flows_{today}.csv'), index=False)
+# aggregate_locs(df, 'midreg').to_csv(
+#     path.join(get_output_dir(), f'midreg_flows_{today}.csv'), index=False)
 
 # by HDI, GDP
 # df = bin_continuous_vars(df, ['hdi', 'gdp'])
