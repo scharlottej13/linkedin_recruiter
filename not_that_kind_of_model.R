@@ -3,33 +3,40 @@ library(gravity)
 library(tidyverse)
 library(MASS)
 
-# read in data from Tom (thanks Tom!)
-df <- read.csv("/Users/scharlottej13/Nextcloud/linkedin_recruiter/outputs/model_input_2021-01-28.csv")
-# drop some rows
-df <- df %>% dplyr::filter(query_date == "2020-07-25" & distance > 0)
-# already has no zeros
-# turn this into a check god knows how to do that in R
-zeros <- row_number(df %>% filter(flow == 0))
+# TO DO
+# make it easy to swap between mac/windows
+#pc <- path.abspath("N:/johnson/linkedin_recruiter")
+#mac <- path.abspath("/Users/scharlottej13/Nextcloud/linkedin_recruiter")
+#if (Sys.getenv("HOME") == "/Users/scharlottej13")
+#{parent_dir <- "/Users/scharlottej13/Nextcloud/linkedin_recruiter"}
 
-run_cohen_model <- function(df, x_vars, categ_vars = c()) {
-  # drop any rows witih null values
-  # TO DO this could be handled more carefully/intentionally
-  # YES DEF NEED TO FIX THIS
-  #keep_cols <- c(x_vars, categ_vars, "flow", "country_dest", "country_orig")
-  #df <- df[complete.cases(df[keep_cols]), ]
-  # create indicator variables (matrix of 0s/1s)
-  wide_vars <- as.data.frame(model.matrix(~ country_dest + country_orig - 1, data=df))
-  # log10 (still don't know why base 10) numeric variables
-  df[x_vars] <- sapply(df[x_vars], as.numeric)
-  df[c(x_vars, "flow")] <- sapply(df[c(x_vars, "flow")], log10)
-  if (length(categ_vars) > 0) {df[categ_vars] <- factor(df[categ_vars])}
-  df <- bind_cols(wide_vars, df[c(x_vars, "flow", categ_vars)])
-  formula <- reformulate(c(x_vars, categ_vars, "."), "flow")
-  fit <- lm(formula = formula, data = df)
+# read in data (thanks Tom!)
+df <- read.csv("/Users/scharlottej13/Nextcloud/linkedin_recruiter/outputs/model_input_2021-01-29.csv")
+# just pick one date for now
+df <- subset(df, query_date == "2020-07-25")
+
+fix_data <- function(df) {
+  # this will probably change as covariates change
+  numeric_cols <- c("flow", "users_orig", "users_dest", "area_orig", "area_dest", "distance")
+  # need to drop 0s, NaNs, and make sure they are numeric
+  df <- df[complete.cases(df[,numeric_cols]),]
+  df <- df[apply(df[numeric_cols] > 0, 1, all),]
+  # there must be an easier way to do this? how to get column index number from column name?
+  df <- cbind(df[,-which(names(df) %in% numeric_cols)], apply(df[numeric_cols], 2, as.numeric))
 }
 
+run_cohen_model <- function(df, x_vars, categ_vars = c()) {
+  # create indicator variables (matrix of 0s/1s)
+  wide_vars <- as.data.frame(model.matrix(~ country_dest + country_orig - 1, data=df))
+  df[,c(x_vars, "flow")] <- log10(df[,c(x_vars, "flow")])
+  if (length(categ_vars) > 0) {df[,categ_vars] <- factor(df[,categ_vars])}
+  df <- cbind(wide_vars, df[,c(x_vars, "flow", categ_vars)])
+  fit <- lm(flow ~ ., data = df)
+}
+
+df <- fix_data(df)
 fit1 <- run_cohen_model(df, c("users_orig", "users_dest", "distance"))
 fit2 <- run_cohen_model(df, c("users_orig", "users_dest", "distance", "area_orig", "area_dest"))
 
-plot(fit$y, fit$fitted.values)
+plot(log10(df$flow), fit1$fitted.values)
 ggplot()
