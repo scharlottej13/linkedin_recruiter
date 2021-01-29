@@ -62,6 +62,8 @@ def prep_country_area():
     # the most recent year w/ data for all countries is 2017
     # close enough for now, but could update this later
     df['area'] = df['2017 [YR2017]'].copy()
+    # some missing values are just '..'
+    df = df.loc[df['area'] != '..']
     return df.set_index('iso3')['area'].to_dict()
 
 
