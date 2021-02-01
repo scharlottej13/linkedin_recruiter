@@ -145,8 +145,8 @@ def add_distance(df, min_wait=1, use_cache=True):
         print("Reading lat/long from cache")
         with open(cache_path, 'r') as fp:
             geo_dict = json.load(fp)
-            # error w/ Dominica, != Dominican Republic
-            geo_dict.update({'dma': [15.4150, -61.3710]})
+        # error w/ Dominica, != Dominican Republic
+        geo_dict.update({'Dominica': [15.4150, -61.3710]})
 
     # grab square km from World Bank
     wb_dict = prep_country_area()
