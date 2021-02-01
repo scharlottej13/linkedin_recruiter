@@ -49,22 +49,16 @@ def standardize_col_names(df):
 
 
 def prep_country_area():
-    """Clean up file with country areas in sq km.
-    Downloaded data from World Bank
-    https://data.worldbank.org/indicator/AG.LND.TOTL.K2
+    """Clean up file with country areas.
+    Downloaded from Food and Agriculture Organization
+    http://www.fao.org/faostat/en/#data/RL
     """
-    # TO DO Tom merges on population, could make sure it's all from
-    # the same place and download straight from World Bank too
-    df = pd.read_csv(path.join(get_input_dir(), 'worldbank_sqkm_2021_01_28.csv'))
-    print(f"World Bank Data {df.iloc[-1][0]}")
-    df = df.dropna(axis=0, subset=['Country Code']).assign(
-        iso3=df['Country Code'].str.lower())
-    # the most recent year w/ data for all countries is 2017
-    # close enough for now, but could update this later
-    df['area'] = df['2017 [YR2017]'].copy()
-    # some missing values are just '..'
-    df = df.loc[df['area'] != '..']
-    return df.set_index('iso3')['area'].to_dict()
+    df = pd.read_csv(path.join(get_input_dir(), 'FAO/FAOSTAT_data_2-1-2021.csv'))
+    df = df.dropna(axis=0, subset=['Value']).assign(
+        # some iso3 codes are numeric, OK locs not in LI data
+        # convert to sq km from hectares
+        iso3=df['Area Code'].str.lower(), Value=df['Value'] * 10)
+    return df.set_index('iso3')['Value'].to_dict()
 
 
 def merge_region_subregion(df):
@@ -138,6 +132,9 @@ def add_distance(df, min_wait=1, use_cache=True):
         geo_dict = defaultdict(tuple)
         for country in df.country_dest.unique():
             loc = geocode(country)
+            # lat, long of center of country, differs from
+            # Cohen et al. use distance between capitals, but I think this is
+            # more realistic for big countries, negligible for small countries
             geo_dict.update({country: (loc.latitude, loc.longitude)})
         # cache result, do not test the gods of osm
         print("Saving results to cache")
@@ -145,7 +142,7 @@ def add_distance(df, min_wait=1, use_cache=True):
             json.dump(geo_dict, fp)
     else:
         assert path.exists(cache_path)
-        print("Reading from cache")
+        print("Reading lat/long from cache")
         with open(cache_path, 'r') as fp:
             geo_dict = json.load(fp)
 
@@ -182,49 +179,41 @@ def aggregate_locs(df, loc):
     )
 
 
-def data_validation(df, baseline='2020-07-25', diff_col='query_date'):
-    # first check percent difference between the two dates of data collection
+def data_validation(df, diff_col='query_date'):
+    # check percent difference between the two dates of data collection
     value_cols = ['flow', 'users_orig', 'users_dest']
     id_cols = ['countrycode_dest', 'countrycode_orig']
-    query_rounds = list(df[f'{diff_col}'].unique())
-    query_rounds.remove(baseline)
-    dfs = []
-    for query_round in query_rounds:
-        check_df = df.query(f"{diff_col} in {[query_round, baseline]}")
-        assert not check_df[id_cols + [diff_col]].duplicated().values.any()
-        # % chg f'n from previous row, so pivot first to fill in 0s
-        # iloc[1:] b/c now the baseline is NA
-        # 1st unstack moves the id cols to the index
-        # 2nd unstack(0) reshapes so value variables are columns
-        check_df = pd.pivot_table(
-            check_df, values=value_cols, index=diff_col, columns=id_cols
-        ).fillna(0).pct_change().iloc[1:].unstack().unstack(0).reset_index(
-        ).merge(
-            check_df[id_cols + value_cols + [diff_col]],
-            on=id_cols, how='right', suffixes=('_diff', '')
-        )
-        dfs.append(check_df)
-    return pd.concat(dfs)
+    assert not df[id_cols + [diff_col]].duplicated().values.any()
+    # % chg f'n from previous row, pivot so rows are each query date
+    # 1st unstack moves the id cols to the index
+    # 2nd unstack(0) reshapes so value variables are columns
+    return pd.pivot_table(
+        df, values=value_cols, index=diff_col, columns=id_cols).fillna(
+        0).pct_change(fill_method='ffill').unstack().unstack(0).reset_index(
+    ).merge(
+        # lastly, merge on original values
+        df[id_cols + value_cols + [diff_col]],
+        on=id_cols + [diff_col], how='right', suffixes=('_pct_change', '')
+    ).assign(flow_std=df.groupby(id_cols)['flow'].transform('std'))
 
 
 # get that data
 # right now I just change the filename manually
 df = (
     pd.read_csv(path.join(get_input_dir(), 'LinkedInRecruiter_dffromtobase_merged_gdp_10.csv'))
-        .pipe(standardize_col_names)
-        .pipe(merge_region_subregion)
-        .pipe(add_distance)
+      .pipe(standardize_col_names)
+      .pipe(merge_region_subregion)
+      .pipe(add_distance)
 )
 
 # for naming outputs
 today = datetime.datetime.now().date()
 
-# OK what do we need to save?
 # TO DO
 # build in archive saving
-# data_validation(df).to_csv(
-#     path.join(get_output_dir(), f'compare_to_july_query_{today}.csv'),
-#     index=False)
+data_validation(df).to_csv(
+    path.join(get_output_dir(), f'rolling_pct_change_{today}.csv'),
+    index=False)
 
 df.to_csv(path.join(get_output_dir(), f'model_input_{today}.csv'), index=False)
 
