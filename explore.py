@@ -145,6 +145,8 @@ def add_distance(df, min_wait=1, use_cache=True):
         print("Reading lat/long from cache")
         with open(cache_path, 'r') as fp:
             geo_dict = json.load(fp)
+            # error w/ Dominica, != Dominican Republic
+            geo_dict.update({'dma': [15.4150, -61.3710]})
 
     # grab square km from World Bank
     wb_dict = prep_country_area()
@@ -197,6 +199,16 @@ def data_validation(df, diff_col='query_date'):
     ).assign(flow_std=df.groupby(id_cols)['flow'].transform('std'))
 
 
+def drop_bad_rows(df):
+    # found these manually using standard deviation
+    big = ((df['query_date'] == '2020_10_08') &
+           (df['countrycode_dest'] == 'caf') &
+           (df['countrycode_orig'].isin(['usa', 'ind', 'gbr', 'deu', 'esp'])))
+    # few of these, they do not belong
+    same = (df['countrycode_dest'] == df['countrycode_orig'])
+    return df[~(big | same)]
+
+
 # get that data
 # right now I just change the filename manually
 df = (
@@ -209,13 +221,12 @@ df = (
 # for naming outputs
 today = datetime.datetime.now().date()
 
-# TO DO
-# build in archive saving
 data_validation(df).to_csv(
     path.join(get_output_dir(), f'rolling_pct_change_{today}.csv'),
     index=False)
 
-df.to_csv(path.join(get_output_dir(), f'model_input_{today}.csv'), index=False)
+drop_bad_rows(df).to_csv(
+    path.join(get_output_dir(), f'model_input_{today}.csv'), index=False)
 
 # by "midregion"
 # aggregate_locs(df, 'midreg').to_csv(
