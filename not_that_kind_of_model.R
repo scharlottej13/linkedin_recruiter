@@ -15,9 +15,13 @@ df <- subset(df, query_date == "2020-07-25")
 run_cohen_model <- function(df, x_vars, categ_vars = c(), threshold=1) {
   # drop small flow values, arbitrary threshold
   df <- df[df$flow > threshold, ]
+  # drop rows with null values if column is a covariate
+  df <- df[complete.cases(df[,x_vars]),]
   # create indicator variables (matrix of 0s/1s)
   wide_vars <- as.data.frame(model.matrix(~ country_dest + country_orig - 1, data=df))
   # log10 transform
+  # nice post on when to log t'form:
+  # https://stats.stackexchange.com/questions/298/in-linear-regression-when-is-it-appropriate-to-use-the-log-of-an-independent-va
   df[,c(x_vars, "flow")] <- log10(df[,c(x_vars, "flow")])
   if (length(categ_vars) > 0) {df[,categ_vars] <- factor(df[,categ_vars])}
   df <- cbind(wide_vars, df[,c(x_vars, "flow", categ_vars)])
@@ -35,3 +39,13 @@ fit6 <- run_cohen_model(df, c("distance", "population_dest", "population_orig"))
 lm(log10(flow) ~ factor(country_dest) + factor(country_orig) + log10(distance) + log10(users_orig) + log10(users_dest), data = df)
 
 plot(model.frame(fit1)$flow, fit1$fitted.values)
+
+# progress today
+# some countries do seem to have much larger coefficients than others
+# should I use outliers or coefficients to figure out which countries are interesting?
+# also, other variables don't seem to be important at all
+# next steps:
+# 1) how to incorporate repeated measures?
+# 2) find outliers
+# 3) understand meaning of coefficients
+# 4) how does using one-hot encoding differ from a categorical variable?
