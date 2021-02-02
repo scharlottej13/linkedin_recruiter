@@ -36,7 +36,7 @@ def get_output_dir():
 
 def standardize_col_names(df):
     replace_dict = {'_x': '_orig', '_y': '_dest', '_from': '_orig',
-                    '_to': '_dest', 'linkedin': ''}
+                    '_to': '_dest', 'linkedin': '', 'countrycode': 'iso3'}
     for k, v in replace_dict.items():
         df.columns = df.columns.str.replace(k, v)
     # df.columns = df.columns.str.replace(
@@ -55,10 +55,22 @@ def prep_country_area():
     """
     df = pd.read_csv(path.join(get_input_dir(), 'FAO/FAOSTAT_data_2-1-2021.csv'))
     df = df.dropna(axis=0, subset=['Value']).assign(
-        # some iso3 codes are numeric, OK locs not in LI data
+        # some iso3 codes are numeric, OK locations not in LI data
         # convert to sq km from hectares
         iso3=df['Area Code'].str.lower(), Value=df['Value'] * 10)
     return df.set_index('iso3')['Value'].to_dict()
+
+
+def prep_internet_usage():
+    """Prep file for internet usage (as % of population)."""
+    internet_dict = pd.read_csv(path.join(
+        get_input_dir(), 'API_IT/API_IT.NET.USER.ZS_DS2_en_csv_v2_1928189.csv'),
+        header=2, usecols=['Country Code', '2018'],
+        converters={'Country Code': lambda x: str.lower(x)}
+    ).set_index('Country Code')['2018'].to_dict()
+    # these are probably not very accurate, just googled it
+    internet_dict.update({'tca': 81.0, 'imn': 71.0})
+    return internet_dict
 
 
 def merge_region_subregion(df):
@@ -82,13 +94,13 @@ def merge_region_subregion(df):
     midreg_dict.update({'Micronesia': 'Oceania'})
     # map from country to region, subregion, and "midregion"
     for drctn in ['orig', 'dest']:
-        df[f'{drctn}_reg'] = df[f'countrycode_{drctn}'].map(iso3_reg)
-        df[f'{drctn}_subreg'] = df[f'countrycode_{drctn}'].map(iso3_subreg)
+        df[f'{drctn}_reg'] = df[f'iso3_{drctn}'].map(iso3_reg)
+        df[f'{drctn}_subreg'] = df[f'iso3_{drctn}'].map(iso3_subreg)
         df[f'{drctn}_midreg'] = df[f'{drctn}_subreg'].map(midreg_dict)
         for loc in ['reg', 'midreg', 'subreg']:
             assert not df[f'{drctn}_{loc}'].isnull().values.any(), \
                 df.loc[
-                    df[f'{drctn}_{loc}'].isnull(), f'countrycode_{drctn}'
+                    df[f'{drctn}_{loc}'].isnull(), f'iso3_{drctn}'
                 ].unique()
     return df
 
@@ -121,16 +133,17 @@ def get_haversine_distance(df):
         lambda x: haversine(x['geoloc_orig'], x['geoloc_dest']), axis=1))
 
 
-def add_distance(df, min_wait=1, use_cache=True):
+def prep_lat_long(country_dict, min_wait=1, use_cache=True):
     cache_path = path.join(get_input_dir(), 'latlong.json')
     if not use_cache:
+        print("Querying Nominatim")
         # need user_agent per ToS of Nominatim
         # https://www.openstreetmap.org/copyright
         geolocator = Nominatim(user_agent='scharlottej13@gmail.com')
         # wrap in automatic error handling for timeout errors
         geocode = RateLimiter(geolocator.geocode, min_delay_seconds=min_wait)
         geo_dict = defaultdict(tuple)
-        for country in df.country_dest.unique():
+        for country in country_dict.keys():
             loc = geocode(country)
             # lat, long of center of country, differs from
             # Cohen et al. use distance between capitals, but I think this is
@@ -145,23 +158,27 @@ def add_distance(df, min_wait=1, use_cache=True):
         print("Reading lat/long from cache")
         with open(cache_path, 'r') as fp:
             geo_dict = json.load(fp)
-        # error w/ Dominica, != Dominican Republic
-        geo_dict.update({'Dominica': [15.4150, -61.3710]})
+    # error w/ Dominica, != Dominican Republic
+    geo_dict.update({'Dominica': [15.4150, -61.3710]})
+    # convert to iso3 for consistency
+    return {country_dict[k]: v for k, v in geo_dict.items()}
 
-    # grab square km from World Bank
-    wb_dict = prep_country_area()
 
-    return (df.assign(
-        # could also use an apply? I think this looks cleaner
-        geoloc_dest=df['country_dest'].map(geo_dict),
-        geoloc_orig=df['country_orig'].map(geo_dict),
-        area_dest=df['countrycode_dest'].map(wb_dict),
-        area_orig=df['countrycode_orig'].map(wb_dict))
-            .pipe(get_haversine_distance))
+def add_metadata(df):
+    """So meta."""
+    country_dict = df[
+        ['country_dest', 'iso3_dest']
+    ].drop_duplicates().set_index('country_dest')['iso3_dest'].to_dict()
+    for k, v in {
+        'geoloc': prep_lat_long(country_dict),
+        'area': prep_country_area(), 'internet': prep_internet_usage()
+    }.items():
+        for x in ['orig', 'dest']:
+            df[[f'{k}_{x}']] = df[f'iso3_{x}'].map(v)
+    return get_haversine_distance(df)
 
 
 def norm_flow(df, loc):
-    # assuming these are the id variables
     assert not df.duplicated(
         [f'orig_{loc}', f'dest_{loc}', 'query_date']
     ).values.any()
@@ -184,7 +201,7 @@ def aggregate_locs(df, loc):
 def data_validation(df, diff_col='query_date'):
     # check percent difference between the two dates of data collection
     value_cols = ['flow', 'users_orig', 'users_dest']
-    id_cols = ['countrycode_dest', 'countrycode_orig']
+    id_cols = ['iso3_dest', 'iso3_orig']
     assert not df[id_cols + [diff_col]].duplicated().values.any()
     # % chg f'n from previous row, pivot so rows are each query date
     # 1st unstack moves the id cols to the index
@@ -202,10 +219,10 @@ def data_validation(df, diff_col='query_date'):
 def drop_bad_rows(df):
     # found these manually using standard deviation
     big = ((df['query_date'] == '2020_10_08') &
-           (df['countrycode_dest'] == 'caf') &
-           (df['countrycode_orig'].isin(['usa', 'ind', 'gbr', 'deu', 'esp'])))
+           (df['iso3_dest'] == 'caf') &
+           (df['iso3_orig'].isin(['usa', 'ind', 'gbr', 'deu', 'esp'])))
     # few of these, they do not belong
-    same = (df['countrycode_dest'] == df['countrycode_orig'])
+    same = (df['iso3_dest'] == df['iso3_orig'])
     return df[~(big | same)]
 
 
@@ -215,7 +232,7 @@ df = (
     pd.read_csv(path.join(get_input_dir(), 'LinkedInRecruiter_dffromtobase_merged_gdp_10.csv'))
       .pipe(standardize_col_names)
       .pipe(merge_region_subregion)
-      .pipe(add_distance)
+      .pipe(add_metadata)
 )
 
 # for naming outputs
