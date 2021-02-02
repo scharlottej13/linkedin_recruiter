@@ -49,3 +49,6 @@ plot(model.frame(fit1)$flow, fit1$fitted.values)
 # 2) find outliers
 # 3) understand meaning of coefficients
 # 4) how does using one-hot encoding differ from a categorical variable?
+# 5) add "labor market conditions" see Bijak et al. ref
+# 6) replace w/ population "weighted average" by age?
+# [^ maybe useful? perhaps if the linkedin users are younger then they are also more likely to have aspirations?]
