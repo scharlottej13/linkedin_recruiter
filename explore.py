@@ -67,10 +67,11 @@ def prep_internet_usage():
         get_input_dir(), 'API_IT/API_IT.NET.USER.ZS_DS2_en_csv_v2_1928189.csv'),
         header=2, usecols=['Country Code', '2018'],
         converters={'Country Code': lambda x: str.lower(x)}
-    ).set_index('Country Code')['2018'].to_dict()
-    # these are probably not very accurate, just googled it
+    ).dropna(axis=0, subset=['2018']).set_index('Country Code')['2018'].to_dict()
+    # these are probably not very accurate, I just googled them
     internet_dict.update({'tca': 81.0, 'imn': 71.0})
-    return internet_dict
+    # divide values by 100
+    return {k: v / 100 for k, v in internet_dict.items()}
 
 
 def merge_region_subregion(df):
@@ -255,3 +256,7 @@ drop_bad_rows(df).to_csv(
 #     aggregate_locs(df, grp_var).to_csv(
 #         path.join(get_output_dir(), f'{grp_var}_flows_{today}.csv'),
 #         index=False)
+
+# import seaborn as sns
+# keep_vars = ['flow', 'distance']
+# sns.pairplot(df[keep_vars])
