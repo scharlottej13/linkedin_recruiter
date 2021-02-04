@@ -1,4 +1,5 @@
 library(MASS)
+library(dplyr)
 # install.packages("~/Users/scharlottej13/repos/gravity")
 
 # read in data
@@ -8,7 +9,7 @@ df <- subset(df, query_date == "2020-07-25")
 # quick test to see if this helps other important variables not drop out
 # tl;dr did not help
 keep_isos <- c("usa", "can", "fra", "gbr", "uae")
-df <- df %>% filter(iso3_orig %in% keep_isos & iso3_dest %in% keep_isos)
+testdf <- df %>% filter(iso3_orig %in% keep_isos & iso3_dest %in% keep_isos)
 
 prep_data <- function(df, x_vars, categ_vars = c(), threshold = 1) {
   # drop small flow values, arbitrary threshold
@@ -38,7 +39,10 @@ run_model <- function(df, x_vars, type = "cohen", log_vars = x_vars,
   } else { print("Model type needs to be one of 'cohen' or 'poisson''") }
 }
 
+fit <- run_model(df, c("users_dest"))
 fit <- run_model(df, c("users_orig", "users_dest"))
+testfit <- run_model(testdf, c("users_orig", "users_dest"))
+
 fit1 <- run_model(df, c("users_orig", "users_dest", "distance"))
 fit2 <- run_model(df, c("users_orig", "users_dest", "distance", "area_orig", "area_dest"))
 fit3 <- run_model(df, c("users_orig", "users_dest", "distance", "area_orig"))
@@ -48,7 +52,6 @@ fit6 <- run_model(df, c("users_orig", "users_dest", "distance", "maxgdp_dest", "
 
 plot(model.frame(fit1)$flow, fit1$fitted.values)
 
-# progress today
 # some countries do seem to have much larger coefficients than others
 # should I use outliers or coefficients to figure out which countries are interesting?
 # also, other variables don't seem to be important at all
