@@ -19,7 +19,7 @@ def _get_working_dir():
     pc = path.abspath("N:/johnson/linkedin_recruiter")
     mac = path.abspath("/Users/scharlottej13/Nextcloud/linkedin_recruiter")
     if path.exists(pc):
-        return
+        return pc
     elif path.exists(mac):
         return mac
     else:

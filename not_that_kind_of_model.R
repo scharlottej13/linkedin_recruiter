@@ -2,17 +2,24 @@ library(MASS)
 library(dplyr)
 # install.packages("~/Users/scharlottej13/repos/gravity")
 
+file <- "model_input_2021-02-05.csv"
+# for swapping between windows & mac
+os <- Sys.info()[["sysname"]]
+if (os == "Darwin") {
+  filepath <- paste0("/Users/scharlottej13/Nextcloud/linkedin_recruiter/outputs/", file)
+} else if (os == "Windows") {
+  filepath <- paste0("N:\\johnson\\linkedin_recruiter\\outputs\\", file)
+} else {print("not tested for linux yet")}
+
 # read in data
-df <- read.csv("/Users/scharlottej13/Nextcloud/linkedin_recruiter/outputs/model_input_2021-02-03.csv")
-# just pick one date for now
-df <- subset(df, query_date == "2020-07-25")
+df <- read.csv(filepath)
 # quick test to see if this helps other important variables not drop out
 # tl;dr did not help
 keep_isos <- c("usa", "can", "fra", "gbr", "uae")
 testdf <- df %>% filter(iso3_orig %in% keep_isos & iso3_dest %in% keep_isos)
 
-prep_data <- function(df, x_vars, categ_vars = c(), threshold = 1) {
-  # drop small flow values, arbitrary threshold
+prep_data <- function(df, x_vars, categ_vars = c(), threshold = 0) {
+  # drop small flow values, default will not drop anything
   df <- df[df$flow > threshold, ]
   # drop rows with null values if column is a covariate
   df <- df[complete.cases(df[,c(x_vars, categ_vars)]),]
