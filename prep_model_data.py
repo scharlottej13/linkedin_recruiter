@@ -244,7 +244,7 @@ def main():
         path.join(get_output_dir(), f'rolling_pct_change_{today}.csv'),
         index=False)
     drop_bad_rows(df).to_csv(
-        path.join(get_output_dir(), f'model_input_{today}.csv'), index=False)
+        path.join(get_input_dir(), f'model_input_{today}.csv'), index=False)
 
     # by "midregion"
     # aggregate_locs(df, 'midreg').to_csv(
