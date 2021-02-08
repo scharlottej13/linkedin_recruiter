@@ -8,7 +8,7 @@ import pandas as pd
 import numpy as np
 import datetime
 import json
-from os import pipe, path
+from os import pipe, path, listdir
 from collections import defaultdict
 from geopy.geocoders import Nominatim
 from geopy.extra.rate_limiter import RateLimiter
@@ -34,6 +34,17 @@ def get_output_dir():
     return path.join(_get_working_dir(), 'outputs')
 
 
+def get_latest_data():
+    # data collected by Tom, thx Tom!
+    file = 'LinkedInRecruiter_dffromtobase_merged_gdp'
+    files = [x for x in listdir(get_input_dir()) if x.startswith(f'{file}')]
+    if len(files) == 1:
+        return files[0]
+    else:
+        # TODO build this out, not sure it matters right now
+        raise NotImplementedError
+
+
 def standardize_col_names(df):
     replace_dict = {
         '_x': '_orig', '_y': '_dest', '_from': '_orig', 'population': 'pop',
@@ -44,8 +55,8 @@ def standardize_col_names(df):
     drop_cols = ['Unnamed: 0', 'query_time_round', 'normalized1', 'normalized2']
     return (
         df.rename(columns={'number_people_who_indicated': 'flow'})
-          .assign(query_date=df['query_time_round'].str[:-9])
-          .drop(drop_cols, axis=1, errors='ignore')
+            .assign(query_date=df['query_time_round'].str[:-9])
+            .drop(drop_cols, axis=1, errors='ignore')
     )
 
 
@@ -194,6 +205,7 @@ def data_validation(df, diff_col='query_date'):
     value_cols = ['flow', 'users_orig', 'users_dest']
     id_cols = ['iso3_dest', 'iso3_orig']
     assert not df[id_cols + [diff_col]].duplicated().values.any()
+    assert not (df['flow'] == 0).values.any()
     # % chg f'n from previous row, pivot so rows are each query date
     # 1st unstack moves the id cols to the index
     # 2nd unstack(0) reshapes so value variables are columns
@@ -209,44 +221,42 @@ def data_validation(df, diff_col='query_date'):
 
 def drop_bad_rows(df):
     # found these manually using standard deviation
-    big = ((df['query_date'] == '2020_10_08') &
+    big = ((df['query_date'] == '2020-10-08') &
            (df['iso3_dest'] == 'caf') &
-           (df['iso3_orig'].isin(['usa', 'ind', 'gbr', 'deu', 'esp'])))
+           (df['iso3_orig'].isin(['usa', 'ind', 'gbr', 'deu', 'esp', 'can', 'pol', 'nld'])))
     # few of these, they do not belong
     same = (df['iso3_dest'] == df['iso3_orig'])
     return df[~(big | same)]
 
 
-# get that data
-# right now I just change the filename manually
-df = (
-    pd.read_csv(path.join(get_input_dir(), 'LinkedInRecruiter_dffromtobase_merged_gdp_10.csv'))
-      .pipe(standardize_col_names)
-      .pipe(merge_region_subregion)
-      .pipe(add_metadata)
-)
+def main():
+    df = (
+        pd.read_csv(path.join(get_input_dir(), get_latest_data()))
+          .pipe(standardize_col_names)
+          .pipe(merge_region_subregion)
+          .pipe(add_metadata)
+    )
 
-# for naming outputs
-today = datetime.datetime.now().date()
+    # for naming outputs
+    today = datetime.datetime.now().date()
 
-data_validation(df).to_csv(
-    path.join(get_output_dir(), f'rolling_pct_change_{today}.csv'),
-    index=False)
+    data_validation(df).to_csv(
+        path.join(get_output_dir(), f'rolling_pct_change_{today}.csv'),
+        index=False)
+    drop_bad_rows(df).to_csv(
+        path.join(get_output_dir(), f'model_input_{today}.csv'), index=False)
 
-drop_bad_rows(df).to_csv(
-    path.join(get_output_dir(), f'model_input_{today}.csv'), index=False)
+    # by "midregion"
+    # aggregate_locs(df, 'midreg').to_csv(
+    #     path.join(get_output_dir(), f'midreg_flows_{today}.csv'), index=False)
 
-# by "midregion"
-# aggregate_locs(df, 'midreg').to_csv(
-#     path.join(get_output_dir(), f'midreg_flows_{today}.csv'), index=False)
+    # by HDI, GDP
+    # df = bin_continuous_vars(df, ['hdi', 'gdp'])
+    # for grp_var in ['hdi', 'gdp']:
+    #     aggregate_locs(df, grp_var).to_csv(
+    #         path.join(get_output_dir(), f'{grp_var}_flows_{today}.csv'),
+    #         index=False)
 
-# by HDI, GDP
-# df = bin_continuous_vars(df, ['hdi', 'gdp'])
-# for grp_var in ['hdi', 'gdp']:
-#     aggregate_locs(df, grp_var).to_csv(
-#         path.join(get_output_dir(), f'{grp_var}_flows_{today}.csv'),
-#         index=False)
 
-# import seaborn as sns
-# keep_vars = ['flow', 'distance']
-# sns.pairplot(df[keep_vars])
+if __name__ == "__main__":
+    main()
