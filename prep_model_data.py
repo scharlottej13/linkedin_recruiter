@@ -55,8 +55,8 @@ def standardize_col_names(df):
     drop_cols = ['Unnamed: 0', 'query_time_round', 'normalized1', 'normalized2']
     return (
         df.rename(columns={'number_people_who_indicated': 'flow'})
-            .assign(query_date=df['query_time_round'].str[:-9])
-            .drop(drop_cols, axis=1, errors='ignore')
+          .assign(query_date=df['query_time_round'].str[:-9])
+          .drop(drop_cols, axis=1, errors='ignore')
     )
 
 
@@ -86,29 +86,28 @@ def prep_internet_usage():
 
 
 def merge_region_subregion(df):
-    loc_mapper = pd.read_csv(
-        path.join(get_input_dir(), 'UNSD-methodology.csv'), encoding='latin1')
-    # manual additions missing from UNSD list
-    loc_mapper = loc_mapper.append(
-        pd.DataFrame(
-            {'Region Name': ['Asia', 'Oceania'],
-             'Sub-region Name': ['Eastern Asia', 'Micronesia'],
-             'ISO-alpha3 Code': ['twn', 'nru']}
-        ), ignore_index=True)
-    loc_mapper = loc_mapper.assign(iso3=loc_mapper['ISO-alpha3 Code'].str.lower())
+    """Add columns for country groups using UNSD or Abel/Cohen methods.
+    UNSD: https://unstats.un.org/unsd/methodology/m49/overview/
+    Abel/Cohen: https://www.nature.com/articles/s41597-019-0089-3
+    """
+    loc_df = pd.read_csv(
+        path.join(get_input_dir(), 'UNSD-methodology.csv'), usecols=[3, 5, 11])
+    loc_df = loc_df.append(pd.DataFrame(
+        {'Region Name': ['Asia', 'Oceania'],
+         'Sub-region Name': ['Eastern Asia', 'Micronesia'],
+         'ISO-alpha3 Code': ['twn', 'nru']}), ignore_index=True
+    ).assign(iso3=loc_df['ISO-alpha3 Code'].str.lower())
     # create some dictionaries for mapping
-    iso3_subreg = loc_mapper.set_index('iso3')['Sub-region Name'].to_dict()
-    iso3_reg = loc_mapper.set_index('iso3')['Region Name'].to_dict()
+    subreg = loc_df.set_index('iso3')['Sub-region Name'].to_dict()
+    reg = loc_df.set_index('iso3')['Region Name'].to_dict()
     # paper from Abel & Cohen has different groups, call them "midregions"
-    midreg_dict = pd.read_csv(
-        path.join(get_input_dir(), 'abel_regions.csv')
-    ).set_index('subregion_from')['midreg_from'].to_dict()
-    midreg_dict.update({'Micronesia': 'Oceania'})
-    # map from country to region, subregion, and "midregion"
+    midreg = pd.read_csv(path.join(get_input_dir(), 'abel_regions.csv')
+                         ).set_index('subregion_from')['midreg_from'].to_dict()
+    # map from country to region, subregion, and midregion
     for drctn in ['orig', 'dest']:
-        df[f'{drctn}_reg'] = df[f'iso3_{drctn}'].map(iso3_reg)
-        df[f'{drctn}_subreg'] = df[f'iso3_{drctn}'].map(iso3_subreg)
-        df[f'{drctn}_midreg'] = df[f'{drctn}_subreg'].map(midreg_dict)
+        df[f'{drctn}_reg'] = df[f'iso3_{drctn}'].map(reg)
+        df[f'{drctn}_subreg'] = df[f'iso3_{drctn}'].map(subreg)
+        df[f'{drctn}_midreg'] = df[f'{drctn}_subreg'].map(midreg)
         for loc in ['reg', 'midreg', 'subreg']:
             assert not df[f'{drctn}_{loc}'].isnull().values.any(), \
                 df.loc[
@@ -117,26 +116,25 @@ def merge_region_subregion(df):
     return df
 
 
-def bin_continuous_vars(df, cont_vars):
+def bin_continuous_vars(df, cont_vars: list, q: int = 5):
+    """Returns dataframe w/ added columns for quantiles of continuous vars.
+    q <- number of quantiles
+    User passes in a list of continuous variables, eg. ['gdp', 'hdi'],
+    and then all columns in data containing that string are identified & binned
+    """
+    assert q == 5, NotImplementedError
     if type(cont_vars) is not list:
         cont_vars = list(cont_vars)
-    cont_var_col_map = defaultdict(list)
+    mapper = defaultdict(list)
     for var in cont_vars:
-        cont_var_col_map.update({var: [x for x in df.columns if var in x]})
-        columns = cont_var_col_map[var]
-        print(f"Found these columns to bin: {columns}")
-        assert ((len(columns) > 0) & (np.mod(len(columns), 2) == 0)), \
-            "Need origin and destination, one is missing"
-    for var, col_list in cont_var_col_map.items():
-        labels = ['Low', 'Low-middle', 'Middle', 'Middle-high', 'High']
+        mapper.update({var: [x for x in df.columns if var in x]})
+        cols = mapper[var]
+        assert ((len(cols) > 0) & (np.mod(len(cols), 2) == 0)), \
+            f"Need origin and destination, one is missing from {cols}"
+    labels = ['Low', 'Low-middle', 'Middle', 'Middle-high', 'High']
+    for var, col_list in mapper.items():
         for col in col_list:
-            if 'dest' in col:
-                prefix = 'dest'
-            elif 'orig' in col:
-                prefix = 'orig'
-            else:
-                raise KeyError
-            df[f'{prefix}_{var}'] = pd.qcut(df[f'{col}'], q=5, labels=labels)
+            df[f'bin_{var}'] = pd.qcut(df[f'{col}'], q=q, labels=labels)
     return df
 
 
@@ -191,13 +189,10 @@ def add_metadata(df):
     )
 
 
-def aggregate_locs(df, loc):
-    return df.groupby(
-        [f'orig_{loc}', f'dest_{loc}', 'query_date']
-    )['flow'].sum().reset_index().assign(
-        total_orig=df.groupby(
-            [f'orig_{loc}', 'query_date'])['flow'].transform(sum)
-    )
+def collapse(df, var, id_cols=None, value_col='flow'):
+    if id_cols is None:
+        id_cols = [f'orig_{var}', f'dest_{var}', 'query_date']
+    return df.groupby(id_cols)[value_col].sum().reset_index()
 
 
 def data_validation(df, diff_col='query_date'):
@@ -235,6 +230,7 @@ def main():
           .pipe(standardize_col_names)
           .pipe(merge_region_subregion)
           .pipe(add_metadata)
+          .pipe(bin_continuous_vars, ['hdi', 'gdp'])
     )
 
     # for naming outputs
@@ -246,14 +242,9 @@ def main():
     drop_bad_rows(df).to_csv(
         path.join(get_input_dir(), f'model_input_{today}.csv'), index=False)
 
-    # by "midregion"
-    # aggregate_locs(df, 'midreg').to_csv(
-    #     path.join(get_output_dir(), f'midreg_flows_{today}.csv'), index=False)
-
-    # by HDI, GDP
-    # df = bin_continuous_vars(df, ['hdi', 'gdp'])
-    # for grp_var in ['hdi', 'gdp']:
-    #     aggregate_locs(df, grp_var).to_csv(
+    # collapse by HDI, GDP, and "midregion"
+    # for grp_var in ['hdi', 'gdp', 'midreg']:
+    #     collapse(df, grp_var).to_csv(
     #         path.join(get_output_dir(), f'{grp_var}_flows_{today}.csv'),
     #         index=False)
 
