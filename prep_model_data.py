@@ -91,12 +91,12 @@ def merge_region_subregion(df):
     Abel/Cohen: https://www.nature.com/articles/s41597-019-0089-3
     """
     loc_df = pd.read_csv(
-        path.join(get_input_dir(), 'UNSD-methodology.csv'), usecols=[3, 5, 11])
-    loc_df = loc_df.append(pd.DataFrame(
+        path.join(get_input_dir(), 'UNSD-methodology.csv'), usecols=[3, 5, 11]
+    ).append(pd.DataFrame(
         {'Region Name': ['Asia', 'Oceania'],
          'Sub-region Name': ['Eastern Asia', 'Micronesia'],
-         'ISO-alpha3 Code': ['twn', 'nru']}), ignore_index=True
-    ).assign(iso3=loc_df['ISO-alpha3 Code'].str.lower())
+         'ISO-alpha3 Code': ['twn', 'nru']}), ignore_index=True)
+    loc_df = loc_df.assign(iso3=loc_df['ISO-alpha3 Code'].str.lower())
     # create some dictionaries for mapping
     subreg = loc_df.set_index('iso3')['Sub-region Name'].to_dict()
     reg = loc_df.set_index('iso3')['Region Name'].to_dict()
