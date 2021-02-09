@@ -2,7 +2,7 @@ library(MASS)
 library(dplyr)
 # install.packages("~/Users/scharlottej13/repos/gravity")
 
-file <- "model_input_2021-02-08.csv"
+file <- "model_input_2021-02-09.csv"
 # for swapping between windows & mac
 os <- Sys.info()[["sysname"]]
 if (os == "Darwin") {
@@ -19,10 +19,9 @@ keep_isos <- c("usa", "can", "fra", "gbr")
 testdf <- df %>% filter(iso3_orig %in% keep_isos & iso3_dest %in% keep_isos)
 
 prep_data <- function(df, x_vars, categ_vars) {
-  # create indicator variables (matrix of 0s/1s); -1 drops intercept column
-  # replicating cohen paper, but only difference is in reference values
-  # ie, if I care about coefficients on each country, only then
-  # does using one-hot encoding vs. ordered categorical (factor) matter
+  # create indicator (binary) variables; -1 drops intercept column
+  # if I care about coefficients on each country, only then
+  # does using one-hot encoding vs. reference method matter
   wide_vars <- as.data.frame(model.matrix(~ country_dest + country_orig - 1, data=df))
   if (length(categ_vars) > 0) {df[,categ_vars] <- factor(df[,categ_vars])}
   df <- cbind(wide_vars, df[,c(x_vars, "flow", categ_vars)])
@@ -70,7 +69,11 @@ fit2 <- run_model(df, c("users_dest", "users_orig"), log_vars = "distance", cate
 
 plot(model.frame(fit1)$flow, fit1$fitted.values)
 df[["resids"]] <- residuals(fit1)
+# https://cran.r-project.org/web/packages/car/car.pdf
+df[["sresids"]] <- rstandard(fit1)
 df[["preds"]] <- fitted.values(fit1, df)
+df[["cooks_dist"]] <- cooks.distance(fit1)
+df[["hat_values"]] <- hatvalues(fit1)
 write.csv(df, gsub("input", "output", filepath), row.names = FALSE)
 
 # should I use outliers or coefficients to figure out which countries are interesting?
