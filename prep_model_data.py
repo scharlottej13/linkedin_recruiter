@@ -134,7 +134,7 @@ def bin_continuous_vars(df, cont_vars: list, q: int = 5):
     labels = ['Low', 'Low-middle', 'Middle', 'Middle-high', 'High']
     for var, col_list in mapper.items():
         for col in col_list:
-            df[f'bin_{var}'] = pd.qcut(df[f'{col}'], q=q, labels=labels)
+            df[f'bin_{col}'] = pd.qcut(df[f'{col}'], q=q, labels=labels)
     return df
 
 
