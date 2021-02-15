@@ -2,7 +2,7 @@ library(MASS)
 library(dplyr)
 # install.packages("~/Users/scharlottej13/repos/gravity")
 
-file <- "model_input_2021-02-09.csv"
+file <- "model_input_2021-02-15.csv"
 # for swapping between windows & mac
 os <- Sys.info()[["sysname"]]
 if (os == "Darwin") {
