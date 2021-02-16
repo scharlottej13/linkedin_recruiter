@@ -1,6 +1,5 @@
 library(MASS)
 library(dplyr)
-# install.packages("~/Users/scharlottej13/repos/gravity")
 
 file <- "model_input_2021-02-15.csv"
 # for swapping between windows & mac
@@ -11,7 +10,9 @@ if (os == "Darwin") {
 } else if (os == "Windows") {
   parent_dir <- "N:\\johnson\\linkedin_recruiter\\inputs\\"
   filepath <- paste0(parent_dir, file)
-} else {print("not tested for linux yet")}
+} else {
+  print("not tested for linux yet")
+}
 
 # read in data
 df <- read.csv(filepath)
@@ -44,7 +45,9 @@ run_model <- function(df, x_vars, log_vars = x_vars,
   } else if(type == "poisson") {
     df <- df %>% mutate_at(log_vars, funs(log(.)))
     fit <- glm(flow ~ ., family = poisson(), data = df)
-  } else { print("Model type needs to be one of 'cohen' or 'poisson''") }
+  } else {
+    print("Model type needs to be one of 'cohen' or 'poisson''")
+ }
 }
 
 # first see if number of users, population, or proportion of population is best
