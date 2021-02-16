@@ -22,7 +22,7 @@ prep_data <- function(df, x_vars, categ_vars) {
   # create indicator (binary) variables; -1 drops intercept column
   # if I care about coefficients on each country, only then
   # does using one-hot encoding vs. reference method matter
-  wide_vars <- as.data.frame(model.matrix(~ country_dest + country_orig - 1, data=df))
+  wide_vars <- as.data.frame(model.matrix(~ country_dest + country_orig - 1, data=df)) %>% select(-c("country_destCanada"))
   if (length(categ_vars) > 0) {df[,categ_vars] <- factor(df[,categ_vars])}
   df <- cbind(wide_vars, df[,c(x_vars, "flow", categ_vars)])
 }
