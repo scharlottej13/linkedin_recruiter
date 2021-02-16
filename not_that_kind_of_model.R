@@ -19,24 +19,30 @@ keep_isos <- c("usa", "can", "fra", "gbr")
 testdf <- df %>% filter(iso3_orig %in% keep_isos & iso3_dest %in% keep_isos)
 
 prep_data <- function(df, x_vars, categ_vars) {
-  # create indicator (binary) variables; -1 drops intercept column
-  # if I care about coefficients on each country, only then
-  # does using one-hot encoding vs. reference method matter
-  wide_vars <- as.data.frame(model.matrix(~ country_dest + country_orig - 1, data=df)) %>% select(-c("country_destCanada"))
-  if (length(categ_vars) > 0) {df[,categ_vars] <- factor(df[,categ_vars])}
-  df <- cbind(wide_vars, df[,c(x_vars, "flow", categ_vars)])
+  factor_vars <- c(categ_vars, c("country_dest", "country_orig"))
+  df %>%
+    # convert to factor variables
+    mutate_at(factor_vars, funs(factor(.))) %>%
+    # only keep columns needed for the model
+    select(c(x_vars, "flow", factor_vars))
 }
 
-run_model <- function(df, x_vars, type = "cohen", log_vars = x_vars,
-                      categ_vars = NULL) {
+run_model <- function(df, x_vars, log_vars = x_vars,
+                      categ_vars = NULL, type = "cohen") {
+  # Run a model of flow ~ country_destination + country_origin
+  # x_vars: independent variables
+  # log_vars: variables that will be log transformed
+  # default is to log t'form all x_vars, pass NULL to override (or other list)
+  # categ_vars: independent variables, converted to factors
   x_vars <- union(x_vars, log_vars)
+  log_vars <- c("flow", log_vars)
   df <- prep_data(df, x_vars, categ_vars)
   if (type == "cohen") {
     # https://www.pnas.org/content/105/40/15269
-    df[,c(log_vars, "flow")] <- log10(df[,c(log_vars, "flow")])
+    df <- df %>% mutate_at(log_vars, funs(log10(.)))
     fit <- lm(flow ~ ., data = df)
   } else if(type == "poisson") {
-    df[,log_vars] <- log(df[, log_vars])
+    df <- df %>% mutate_at(log_vars, funs(log(.)))
     fit <- glm(flow ~ ., family = poisson(), data = df)
   } else { print("Model type needs to be one of 'cohen' or 'poisson''") }
 }
@@ -78,9 +84,8 @@ write.csv(df, gsub("input", "output", filepath), row.names = FALSE)
 
 # should I use outliers or coefficients to figure out which countries are interesting?
 # next steps:
-# 2) find outliers
-# 3) understand meaning of coefficients
-# 5) add "labor market conditions"? see Bijak et al. ref
-# 6) replace w/ population "weighted average" by age?
+# understand meaning of coefficients
+# add "labor market conditions"? see Bijak et al. ref (or other covariates)
+# replace w/ population "weighted average" by age?
 # [^ maybe useful? perhaps if the linkedin users are younger then they are also more likely to have aspirations?]
 
