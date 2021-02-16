@@ -2,16 +2,19 @@
     "python.linting.pylintEnabled": false,
     "python.linting.flake8Enabled": true,
     "python.linting.enabled": true,
+    "python.pythonPath": "/Users/scharlottej13/anaconda3/envs/linkedin_recruiter/bin/python",
 
+    "[r]": {
+        "editor.formatOnSave": false
+    },
     "r.bracketedPaste": true,
-    "r.rterm.mac": "/Users/scharlottej13/anaconda3/envs/linkedin_recruiter/bin/radian.exe",
-    "r.rpath.mac": "/Library/Frameworks/R.framework/Resources/bin/R.exe",
+    "r.rterm.mac": "/Users/scharlottej13/anaconda3/envs/linkedin_recruiter/bin/radian",
+    "r.rpath.mac": "/usr/local/bin/R",
     "r.lsp.debug": true,
     "r.lsp.diagnostics": true,
     "r.rterm.option": [
         "--no-save",
         "--no-restore",
-        "--r-binary=/Library/Frameworks/R.framework/Resources/bin/R.exe"
-    ],
-    "python.pythonPath": "/Users/scharlottej13/anaconda3/envs/linkedin_recruiter/bin/python"
+        "--r-binary=/usr/local/bin/R"
+    ],   
 }
