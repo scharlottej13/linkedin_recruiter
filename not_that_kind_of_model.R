@@ -24,15 +24,15 @@ testdf <- df %>% filter(iso3_orig %in% keep_isos & iso3_dest %in% keep_isos)
 prep_data <- function(df, factor_vars, log_vars, type) {
   if (type %in% c("cohen", "poisson")) {
     if (type == "cohen") {
-      my_func <- log10()
+      my_func <- "log10"
     } else {
-      my_func <- log()
+      my_func <- "log"
     }
     df %>%
       # convert to factor variables
-      mutate_at(factor_vars, funs(factor(.))) %>%
+      mutate_at(factor_vars, factor) %>%
       # log transform
-      mutate_at(log_vars, funs(my_func(.))) %>%
+      mutate_at(log_vars, getFunction(my_func)) %>%
       # only keep columns needed for the model
       select(c(x_vars, "flow", factor_vars))
   } else {
@@ -40,7 +40,7 @@ prep_data <- function(df, factor_vars, log_vars, type) {
     # I wonder if in R you can have a function that does nothing?
     df %>%
       # convert to factor variables
-      mutate_at(factor_vars, funs(factor(.))) %>%
+      mutate_at(factor_vars, factor) %>%
       # only keep columns needed for the model
       select(c(x_vars, "flow", factor_vars))
   }
