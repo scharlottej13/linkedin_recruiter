@@ -1,5 +1,7 @@
 library(MASS)
 library(dplyr)
+library(gravity)
+
 
 file <- "model_input_2021-02-15.csv"
 # for swapping between windows & mac
@@ -19,34 +21,54 @@ df <- read.csv(filepath)
 keep_isos <- c("usa", "can", "fra", "gbr")
 testdf <- df %>% filter(iso3_orig %in% keep_isos & iso3_dest %in% keep_isos)
 
-prep_data <- function(df, x_vars, categ_vars) {
-  factor_vars <- c(categ_vars, c("country_dest", "country_orig"))
-  df %>%
-    # convert to factor variables
-    mutate_at(factor_vars, funs(factor(.))) %>%
-    # only keep columns needed for the model
-    select(c(x_vars, "flow", factor_vars))
+prep_data <- function(df, factor_vars, log_vars, type) {
+  if (type %in% c("cohen", "poisson")) {
+    if (type == "cohen") {
+      my_func <- log10()
+    } else {
+      my_func <- log()
+    }
+    df %>%
+      # convert to factor variables
+      mutate_at(factor_vars, funs(factor(.))) %>%
+      # log transform
+      mutate_at(log_vars, funs(my_func(.))) %>%
+      # only keep columns needed for the model
+      select(c(x_vars, "flow", factor_vars))
+  } else {
+    # TO DO
+    # I wonder if in R you can have a function that does nothing?
+    df %>%
+      # convert to factor variables
+      mutate_at(factor_vars, funs(factor(.))) %>%
+      # only keep columns needed for the model
+      select(c(x_vars, "flow", factor_vars))
+  }
 }
 
-run_model <- function(df, x_vars, log_vars = x_vars,
-                      categ_vars = NULL, type = "cohen") {
+run_model <- function(df, log_vars = NULL, other_factors = NULL, type = "cohen") {
   # Run a model of flow ~ country_destination + country_origin
-  # x_vars: independent variables
-  # log_vars: variables that will be log transformed
-  # default is to log t'form all x_vars, pass NULL to override (or other list)
-  # categ_vars: independent variables, converted to factors
-  x_vars <- union(x_vars, log_vars)
+  # log_vars: independent variables that will be log transformed
+  # other_factors: independent categorical variables
+  # in addition to country_dest, country_orig
+  # type: type of model to run, one of cohen, poisson, or gravity
   log_vars <- c("flow", log_vars)
-  df <- prep_data(df, x_vars, categ_vars)
+  factors <- c(c("country_orig", "country_dest"), other_factors)
+  df <- prep_data(df, factors, log_vars, type)
   if (type == "cohen") {
     # https://www.pnas.org/content/105/40/15269
-    df <- df %>% mutate_at(log_vars, funs(log10(.)))
     fit <- lm(flow ~ ., data = df)
-  } else if(type == "poisson") {
-    df <- df %>% mutate_at(log_vars, funs(log(.)))
+  } else if (type == "poisson") {
     fit <- glm(flow ~ ., family = poisson(), data = df)
-  } else {
-    print("Model type needs to be one of 'cohen' or 'poisson''")
+  } else if (type == "gravity") {
+    fit <- ddm(
+      dependent_variable = "flow", distance = "distance",
+      code_origin = "country_orig", code_destination = "country_dest",
+      data = df, additional_regressors = other_factors
+    )
+  }
+  else {
+    print("Model type needs to be one of 'cohen', 'poisson', 'gravity'")
  }
 }
 
