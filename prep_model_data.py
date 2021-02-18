@@ -4,14 +4,16 @@ Created on Fri Oct  9 10:39:43 2020
 @author: johnson
 """
 
-import pandas as pd
-import numpy as np
 import datetime
 import json
-from os import pipe, path, listdir
 from collections import defaultdict
-from geopy.geocoders import Nominatim
+from itertools import product
+from os import listdir, path, pipe
+
+import numpy as np
+import pandas as pd
 from geopy.extra.rate_limiter import RateLimiter
+from geopy.geocoders import Nominatim
 from haversine import haversine
 
 
@@ -224,6 +226,25 @@ def drop_bad_rows(df):
     return df[~(big | same)]
 
 
+def square_data(df):
+    """Add rows of set(origin country) * set(destination country).
+    
+    Create a "square" dataframe with cartesian product
+    of origin countries and destination countries.
+    NOTE: Should this be within query_date or across all query_dates?
+    I think this depends on the model, but for now make it across
+    """
+    rows = product(df['country_orig'].unique(), df['country_dest'].unique(),
+                   df['query_date'].unique())
+    idx = pd.DataFrame.from_records(
+        rows, columns=['country_orig', 'country_dest', 'query_date'])
+    # drop these rows, cannot capture "internal" migration aspirations
+    idx = idx.loc[~(idx['country_orig'] == idx['country_dest'])]
+    df = df.merge(
+        idx, how='outer', on=['country_orig', 'country_dest', 'query_date'])
+    return df
+
+
 def main():
     df = (
         pd.read_csv(path.join(get_input_dir(), get_latest_data()))
@@ -232,7 +253,7 @@ def main():
           .pipe(add_metadata)
           .pipe(bin_continuous_vars, ['hdi', 'gdp'])
     )
-
+    df = square_data(df)
     # for naming outputs
     today = datetime.datetime.now().date()
 
