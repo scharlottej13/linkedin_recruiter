@@ -99,11 +99,11 @@ write.csv(add_fit_quality(fit, df),
           gsub("model", "cohen_model", outpath), row.names = FALSE)
 
 # poisson
-fit <- run_model(df,
+fit2 <- run_model(df,
   log_vars = c("distance"), other_factors = c("query_date"),
   other_numeric = c("prop_users_orig", "prop_users_dest"), type = "poisson"
 )
-write.csv(add_fit_quality(fit, df),
+write.csv(add_fit_quality(fit2, df),
           gsub("model", "poisson_model", outpath), row.names = FALSE)
 
 # fit <- run_model(df,
