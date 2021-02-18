@@ -79,26 +79,33 @@ add_fit_quality <- function(fit, df) {
   df[["preds"]] <- fitted.values(fit, df)
   df[["cooks_dist"]] <- cooks.distance(fit)
   df[["hat_values"]] <- hatvalues(fit)
+  return(df)
 }
 
 # read in data
-df <- read.csv(get_filepath())
-# create test df for fun
+filepath <- get_filepath()
+outpath <- gsub("input", "output", filepath)
+df <- read.csv(filepath)
+# create test df for fun, can build this out later
 keep_isos <- c("usa", "can", "fra", "gbr")
 testdf <- df %>% filter(iso3_orig %in% keep_isos & iso3_dest %in% keep_isos)
 
 ## tried a bunch, see git diff
 
+# linear model
 fit <- run_model(df, log_vars = c("distance"), other_factors = c("query_date"),
                  other_numeric = c("prop_users_orig", "prop_users_dest"))
-df <- add_fit_quality(fit, df)
-write.csv(df, paste0('cohen_', gsub("input", "output", filepath)), row.names = FALSE)
+write.csv(add_fit_quality(fit, df),
+          gsub("model", "cohen_model", outpath), row.names = FALSE)
+
+# poisson
 fit <- run_model(df,
   log_vars = c("distance"), other_factors = c("query_date"),
   other_numeric = c("prop_users_orig", "prop_users_dest"), type = "poisson"
 )
-df <- add_fit_quality(fit, df)
-write.csv(df, paste0('poisson_', gsub("input", "output", filepath)), row.names = FALSE)
+write.csv(add_fit_quality(fit, df),
+          gsub("model", "poisson_model", outpath), row.names = FALSE)
+
 # fit <- run_model(df,
 #   log_vars = c("distance"), type = "gravity"
 # )
