@@ -2,110 +2,109 @@ library(MASS)
 library(dplyr)
 library(gravity)
 
-
-file <- "model_input_2021-02-15.csv"
-# for swapping between windows & mac
-os <- Sys.info()[["sysname"]]
-if (os == "Darwin") {
-  parent_dir <- "/Users/scharlottej13/Nextcloud/linkedin_recruiter/inputs/"
-  filepath <- paste0(parent_dir, file)
-} else if (os == "Windows") {
-  parent_dir <- "N:\\johnson\\linkedin_recruiter\\inputs\\"
-  filepath <- paste0(parent_dir, file)
-} else {
-  print("not tested for linux yet")
-}
-
-# read in data
-df <- read.csv(filepath)
-keep_isos <- c("usa", "can", "fra", "gbr")
-testdf <- df %>% filter(iso3_orig %in% keep_isos & iso3_dest %in% keep_isos)
-
-prep_data <- function(df, factor_vars, log_vars, type) {
-  if (type %in% c("cohen", "poisson")) {
-    if (type == "cohen") {
-      my_func <- "log10"
-    } else {
-      my_func <- "log"
-    }
-    df %>%
-      # convert to factor variables
-      mutate_at(factor_vars, factor) %>%
-      # log transform
-      mutate_at(log_vars, getFunction(my_func)) %>%
-      # only keep columns needed for the model
-      select(c(x_vars, "flow", factor_vars))
+get_filepath <- function() {
+  # this is changed manually
+  file <- "model_input_2021-02-15.csv"
+  # for swapping between windows & mac
+  os <- Sys.info()[["sysname"]]
+  if (os == "Darwin") {
+    parent_dir <- "/Users/scharlottej13/Nextcloud/linkedin_recruiter/inputs/"
+    filepath <- paste0(parent_dir, file)
+  } else if (os == "Windows") {
+    parent_dir <- "N:\\johnson\\linkedin_recruiter\\inputs\\"
+    filepath <- paste0(parent_dir, file)
   } else {
-    # TO DO
-    # I wonder if in R you can have a function that does nothing?
-    df %>%
-      # convert to factor variables
-      mutate_at(factor_vars, factor) %>%
-      # only keep columns needed for the model
-      select(c(x_vars, "flow", factor_vars))
+    print("not tested for linux yet")
   }
 }
 
-run_model <- function(df, log_vars = NULL, other_factors = NULL, type = "cohen") {
+return_df <- function(df) {
+  # does R have a builtin f'n for this?
+  df
+}
+
+prep_data <- function(df, factor_vars, log_vars, keep_vars, type) {
+  if (type == "cohen") {
+    my_func <- "log10"
+  } else if (type == "poisson") {
+    # drop 'flow' b/c in glm R handles this
+    log_vars <- log_vars[!log_vars == "flow"]
+    my_func <- "log"
+  } else {
+    # gravity model already log transforms
+    my_func <- "return_df"
+  }
+  df %>%
+    mutate_at(factor_vars, factor) %>%
+    mutate_at(log_vars, getFunction(my_func)) %>%
+    dplyr::select(all_of(keep_vars))
+}
+
+run_model <- function(df, log_vars = NULL, other_factors = NULL,
+                      other_numeric = NULL, type = "cohen") {
   # Run a model of flow ~ country_destination + country_origin
   # log_vars: independent variables that will be log transformed
   # other_factors: independent categorical variables
+  # other_numeric: independent numeric variables that are not log transformed
   # in addition to country_dest, country_orig
   # type: type of model to run, one of cohen, poisson, or gravity
   log_vars <- c("flow", log_vars)
   factors <- c(c("country_orig", "country_dest"), other_factors)
-  df <- prep_data(df, factors, log_vars, type)
+  keep_vars <- unique(c(log_vars, factors, other_numeric))
+  df <- prep_data(df, factors, log_vars, keep_vars, type)
   if (type == "cohen") {
     # https://www.pnas.org/content/105/40/15269
     fit <- lm(flow ~ ., data = df)
   } else if (type == "poisson") {
+    # no offset b/c one user can want to move to > 1 location
     fit <- glm(flow ~ ., family = poisson(), data = df)
   } else if (type == "gravity") {
+    # TO DO test/build this part more
+    # need to see how to add other categorical covariates
     fit <- ddm(
       dependent_variable = "flow", distance = "distance",
       code_origin = "country_orig", code_destination = "country_dest",
-      data = df, additional_regressors = other_factors
+      data = df
     )
   }
   else {
     print("Model type needs to be one of 'cohen', 'poisson', 'gravity'")
  }
+ return(fit)
 }
 
-# first see if number of users, population, or proportion of population is best
-fit1 <- run_model(df, c("users_dest", "users_orig"), categ_vars = "query_date")
-fit2 <- run_model(df, c("users_dest", "users_orig", "pop_orig", "pop_dest"), categ_vars = "query_date")
-# this means don't log any of the independent variables
-fit3 <- run_model(df, c("prop_users_dest", "prop_users_orig"), log_vars = NULL, categ_vars = "query_date")
+add_fit_quality <- function(fit, df) {
+  df[["resids"]] <- residuals(fit)
+  df[["sresids"]] <- rstandard(fit)
+  df[["preds"]] <- fitted.values(fit, df)
+  df[["cooks_dist"]] <- cooks.distance(fit)
+  df[["hat_values"]] <- hatvalues(fit)
+}
 
-# ok! chose fit3; population drops out of model for fit2
-# let's add distance + area in sq km
-fit1 <- run_model(df, c("prop_users_dest", "prop_users_orig"), log_vars = "distance", categ_vars = "query_date")
-fit2 <- run_model(df, c("prop_users_dest", "prop_users_orig"),
-                  log_vars = c("distance", "area_orig", "area_dest"), categ_vars = "query_date")
+# read in data
+df <- read.csv(get_filepath())
+# create test df for fun
+keep_isos <- c("usa", "can", "fra", "gbr")
+testdf <- df %>% filter(iso3_orig %in% keep_isos & iso3_dest %in% keep_isos)
 
-# model dropped area_orig & area_dest (makes sense, doesn't vary)
-fit2 <- run_model(df, c("prop_users_dest", "prop_users_orig", "internet_dest", "internet_orig"),
-                  log_vars = "distance", categ_vars = "query_date")
-# try gdp
-fit2 <- run_model(df, c("prop_users_dest", "prop_users_orig"),
-                  log_vars = c("distance", "maxgdp_orig", "maxgdp_dest"), categ_vars = "query_date")
-# try hdi
-fit2 <- run_model(df, c("prop_users_dest", "prop_users_orig", "maxhdi_dest", "maxhdi_orig"),
-                  log_vars = "distance", categ_vars = "query_date")
+## tried a bunch, see git diff
 
-# and this one?
-# pretty much the same as fit1
-fit2 <- run_model(df, c("users_dest", "users_orig"), log_vars = "distance", categ_vars = "query_date")
+fit <- run_model(df, log_vars = c("distance"), other_factors = c("query_date"),
+                 other_numeric = c("prop_users_orig", "prop_users_dest"))
+df <- add_fit_quality(fit, df)
+write.csv(df, paste0('cohen_', gsub("input", "output", filepath)), row.names = FALSE)
+fit <- run_model(df,
+  log_vars = c("distance"), other_factors = c("query_date"),
+  other_numeric = c("prop_users_orig", "prop_users_dest"), type = "poisson"
+)
+df <- add_fit_quality(fit, df)
+write.csv(df, paste0('poisson_', gsub("input", "output", filepath)), row.names = FALSE)
+# fit <- run_model(df,
+#   log_vars = c("distance"), type = "gravity"
+# )
 
-plot(model.frame(fit1)$flow, fit1$fitted.values)
-df[["resids"]] <- residuals(fit1)
-# https://cran.r-project.org/web/packages/car/car.pdf
-df[["sresids"]] <- rstandard(fit1)
-df[["preds"]] <- fitted.values(fit1, df)
-df[["cooks_dist"]] <- cooks.distance(fit1)
-df[["hat_values"]] <- hatvalues(fit1)
-write.csv(df, gsub("input", "output", filepath), row.names = FALSE)
+# df <- add_fit_quality(fit, df)
+# write.csv(df, gsub("input", "output", filepath), row.names = FALSE)
 
 # should I use outliers or coefficients to figure out which countries are interesting?
 # next steps:
@@ -113,4 +112,3 @@ write.csv(df, gsub("input", "output", filepath), row.names = FALSE)
 # add "labor market conditions"? see Bijak et al. ref (or other covariates)
 # replace w/ population "weighted average" by age?
 # [^ maybe useful? perhaps if the linkedin users are younger then they are also more likely to have aspirations?]
-
