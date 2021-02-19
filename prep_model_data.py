@@ -9,7 +9,6 @@ import json
 from collections import defaultdict
 from itertools import product
 from os import listdir, path, pipe
-
 import numpy as np
 import pandas as pd
 from geopy.extra.rate_limiter import RateLimiter
@@ -226,23 +225,31 @@ def drop_bad_rows(df):
     return df[~(big | same)]
 
 
-def square_data(df):
-    """Add rows of set(origin country) * set(destination country).
-    
-    Create a "square" dataframe with cartesian product
-    of origin countries and destination countries.
+def flag_complements(df):
+    """Add column indicating if complement of origin, destination exists.
+
+    We know that not all countries of origin are represented in these data,
+    since LinkedIn only shows us the top 75 hits. Identify rows that have
+    the complement pair with "has_complement" column.
     NOTE: Should this be within query_date or across all query_dates?
-    I think this depends on the model, but for now make it across
+    I think this depends on the model, but for now make it within
     """
-    rows = product(df['country_orig'].unique(), df['country_dest'].unique(),
-                   df['query_date'].unique())
-    idx = pd.DataFrame.from_records(
-        rows, columns=['country_orig', 'country_dest', 'query_date'])
-    # drop these rows, cannot capture "internal" migration aspirations
-    idx = idx.loc[~(idx['country_orig'] == idx['country_dest'])]
-    df = df.merge(
-        idx, how='outer', on=['country_orig', 'country_dest', 'query_date'])
-    return df
+    id_cols = ['query_date', 'country_orig', 'country_dest']
+    # create list of tuples [(date, orig, dest)], quick to loop over &
+    # easily make a dataframe from it again at the end
+    country_pairs = df[id_cols].to_records(index=False).tolist()
+    keep_pairs = []
+    for pair in country_pairs:
+        # want to get the complement of the country pair & leave date
+        complement = (pair[0],) + pair[-1:-3:-1]
+        if complement in country_pairs:
+            keep_pairs.extend([pair, complement])
+    # order of id_cols is SUPER important, possible to add a test?
+    square_df = pd.DataFrame.from_records(keep_pairs, columns=id_cols)
+    return df.merge(
+        square_df, how='left', indicator='has_complement').assign(
+            has_complement=lambda x: x['has_complement'].map(
+                {'left_only': 0, 'both': 1}))
 
 
 def main():
@@ -253,15 +260,20 @@ def main():
           .pipe(add_metadata)
           .pipe(bin_continuous_vars, ['hdi', 'gdp'])
     )
-    df = square_data(df)
     # for naming outputs
     today = datetime.datetime.now().date()
 
+    # does fun stuff like pct change, std., identify new country pairs, etc.
     data_validation(df).to_csv(
         path.join(get_output_dir(), f'rolling_pct_change_{today}.csv'),
         index=False)
-    drop_bad_rows(df).to_csv(
-        path.join(get_input_dir(), f'model_input_{today}.csv'), index=False)
+
+    df = drop_bad_rows(df)
+    df = flag_complements(df)
+
+    # TO DO
+    # build archive
+    df.to_csv(path.join(get_input_dir(), f'model_input_{today}.csv'), index=False)
 
     # collapse by HDI, GDP, and "midregion"
     # for grp_var in ['hdi', 'gdp', 'midreg']:
