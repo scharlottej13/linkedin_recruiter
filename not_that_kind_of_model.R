@@ -2,9 +2,9 @@ library(MASS)
 library(dplyr)
 library(gravity)
 
-get_filepath <- function() {
+get_filepath <- function(date) {
   # this is changed manually
-  file <- "model_input_2021-02-15.csv"
+  file <- paste0("model_input_", date, ".csv")
   # for swapping between windows & mac
   os <- Sys.info()[["sysname"]]
   if (os == "Darwin") {
@@ -83,7 +83,7 @@ add_fit_quality <- function(fit, df) {
 }
 
 # read in data
-filepath <- get_filepath()
+filepath <- get_filepath("2021-02-19")
 outpath <- gsub("input", "output", filepath)
 df <- read.csv(filepath)
 # create test df for fun, can build this out later
