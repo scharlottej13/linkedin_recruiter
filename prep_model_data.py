@@ -76,22 +76,39 @@ def prep_country_area():
     return df.set_index('iso3')['Value'].to_dict()
 
 
-def alpha2_iso3(x):
+def _alpha2_iso3(x):
     if pd.isnull(x):
         return None
     else:
-        return pycountry.countries.get(alpha_2=x).alpha_3
+        return pycountry.countries.get(alpha_2=x).alpha_3.str.lower()
      
 
-def prep_borders():
+def prep_borders(df):
     """Prep borders file from GeoDataSource."""
-    df = pd.read_csv(path.join(
+    border_df = pd.read_csv(path.join(
         get_input_dir(), 'country-borders/GEODATASOURCE-COUNTRY-BORDERS.CSV'),
-    # was turning Namibia (NA) to missing
-    na_values=[''], keep_default_na=False)
-    df['iso3'] = df['country_code'].apply(lambda x: alpha2_iso3(x))
-    df['iso3_brdr'] = df['country_border_code'].apply(lambda x: alpha2_iso3(x))
-    return df[['iso3', 'iso3_brdr']]
+        # was turning Namibia (NA) to missing
+        na_values=[''], keep_default_na=False
+    ).assign(
+        iso3=df['country_code'].apply(lambda x: alpha2_iso3(x))
+    ).assign(
+        iso3_brdr=df['country_border_code'].apply(lambda x: alpha2_iso3(x)))
+    # quick check
+    missing = set(df['iso3_dest']) - set(border_df['iso3'])
+    assert len(missing) == 0, f'{missing} are missing from border pairs'
+    return border_df[['iso3', 'iso3_brdr']]
+
+
+def prep_language():
+    """Prep data on language overlap & proximity from CEPII.
+    
+    Paper clearly defines: col, csl, cnl, lp1, lp2. Not sure
+    about the other columns.
+    """
+    return pd.read_stata(
+        path.join(get_input_dir()), 'CEPII_language.dta',
+        columns=['iso_o', 'iso_d', 'col', 'csl', 'cnl', 'lp1', 'lp2']
+    ).rename(columns={'iso_o': 'iso3_orig', 'iso_d': 'iso3_dest'})
 
 
 def prep_internet_usage():
@@ -194,8 +211,35 @@ def prep_lat_long(country_dict, min_wait=1, use_cache=True):
     return {country_dict[k]: v for k, v in geo_dict.items()}
 
 
+def prep_complements(df):
+    """Create dataframe of only complementary origin, destination pairs.
+
+    We know that not all countries of origin are represented in these data,
+    since LinkedIn only shows us the top 75 origin locations per desired
+    destination, by number of users. Return dataframe of only complement pairs.
+
+    NOTE: Should this be within query_date or across all query_dates?
+    I think this depends, but for now make it within
+    """
+    id_cols = ['query_date', 'country_orig', 'country_dest']
+    # create list of tuples [(date, orig, dest)], quick to loop over &
+    # easily make a dataframe from it again at the end
+    data_pairs = df[id_cols].to_records(index=False).tolist()
+    complements = [(date, dest, orig) for date, orig, dest in country_pairs]
+    # TO DO good place for a test I think
+    keep_pairs = list(set(data_pairs) & set(complements))
+    return pd.DataFrame.from_records(keep_pairs, columns=id_cols)
+
+
 def add_metadata(df):
-    """So meta."""
+    """So meta.
+    
+    This function is a wrapper for a bunch of smaller functions
+    that prep the metadata to be merged on. Split into parts (1)
+    where two columns are created separately for origin and destination
+    and (2) where one column is created from the origin, destination pair
+    """
+    # (1) two new columns, separate for origin + destination
     # need this to pull lat/long based on countries in data
     country_dict = df[
         ['country_dest', 'iso3_dest']
@@ -204,22 +248,26 @@ def add_metadata(df):
     # metadata that is being added
     for k, v in {
         'geoloc': prep_lat_long(country_dict),
-        'area': prep_country_area(), 'internet': prep_internet_usage()
+        'area': prep_country_area(), 'internet': prep_internet_usage(),
+        'prop': None
     }.items():
         for x in ['orig', 'dest']:
-            df[f'{k}_{x}'] = df[f'iso3_{x}'].map(v)
-    # flag countries that share a land border
+            if k != 'prop':
+                df[f'{k}_{x}'] = df[f'iso3_{x}'].map(v)
+            else:
+                df[f'{k}_{x}'] = df[f'users_{x}'] / df[f'pop_{x}']
+    # (2) one new column, based on origin/destination pair
+    border_df = prep_borders(df)
+    complement_df = prep_complements(df)
     df = df.merge(
-        prep_borders(), left_on=['iso3_dest', 'iso3_orig'],
-        right_on=['iso3', 'iso3_brdr'], how='left', indicator='shares_border'
-    ).assign(shares_border=df['shares_border'].map({'left_only': 0, 'both': 1}))
-
-    return df.assign(
-        distance=df.apply(
-            lambda x: haversine(x['geoloc_orig'], x['geoloc_dest']), axis=1),
-        prop_users_orig=df['users_orig'] / df['pop_orig'],
-        prop_users_dest=df['users_dest'] / df['pop_dest']
-    )
+        border_df, left_on=['iso3_dest', 'iso3_orig'],
+        right_on=['iso3', 'iso3_brdr'], how='left', indicator='border'
+    ).merge(complement_df, how='left', indicator='complement'
+    ).merge(prep_language(), how='left')
+    df[['complement', 'border']] = df[['complement', 'border']].map(
+        {'left_only': 0, 'both': 1})
+return df.assign(distance=df.apply(
+    lambda x: haversine(x['geoloc_orig'], x['geoloc_dest']), axis=1))
 
 
 def collapse(df, var, id_cols=None, value_col='flow'):
@@ -255,30 +303,6 @@ def drop_bad_rows(df):
     # few of these, they do not belong
     same = (df['iso3_dest'] == df['iso3_orig'])
     return df[~(big | same)]
-
-
-def flag_complements(df):
-    """Add column indicating if complement of origin, destination exists.
-
-    We know that not all countries of origin are represented in these data,
-    since LinkedIn only shows us the top 75 hits. Identify rows that have
-    the complement pair with "has_complement" column.
-
-    NOTE: Should this be within query_date or across all query_dates?
-    I think this depends on the model, but for now make it within
-    """
-    id_cols = ['query_date', 'country_orig', 'country_dest']
-    # create list of tuples [(date, orig, dest)], quick to loop over &
-    # easily make a dataframe from it again at the end
-    data_pairs = df[id_cols].to_records(index=False).tolist()
-    complements = [(date, dest, orig) for date, orig, dest in country_pairs]
-    keep_pairs = list(set(data_pairs) & set(complements))
-    square_df = pd.DataFrame.from_records(keep_pairs, columns=id_cols)
-    return df.merge(
-        square_df, how='left', indicator='has_complement').assign(
-            has_complement=df['has_complement'].map(
-                {'left_only': 0, 'both': 1}))
-
 
 
 def main():
