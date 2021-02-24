@@ -11,6 +11,7 @@ from itertools import product
 from os import listdir, path, pipe
 import numpy as np
 import pandas as pd
+import pycountry
 from geopy.extra.rate_limiter import RateLimiter
 from geopy.geocoders import Nominatim
 from haversine import haversine
@@ -63,6 +64,7 @@ def standardize_col_names(df):
 
 def prep_country_area():
     """Clean up file with country areas.
+    
     Downloaded from Food and Agriculture Organization
     http://www.fao.org/faostat/en/#data/RL
     """
@@ -74,8 +76,30 @@ def prep_country_area():
     return df.set_index('iso3')['Value'].to_dict()
 
 
+def alpha2_iso3(x):
+    if pd.isnull(x):
+        return None
+    else:
+        return pycountry.countries.get(alpha_2=x).alpha_3
+     
+
+def prep_borders():
+    """Prep borders file from GeoDataSource."""
+    df = pd.read_csv(path.join(
+        get_input_dir(), 'country-borders/GEODATASOURCE-COUNTRY-BORDERS.CSV'),
+    # was turning Namibia (NA) to missing
+    na_values=[''], keep_default_na=False)
+    df['iso3'] = df['country_code'].apply(lambda x: alpha2_iso3(x))
+    df['iso3_brdr'] = df['country_border_code'].apply(lambda x: alpha2_iso3(x))
+    return df[['iso3', 'iso3_brdr']]
+
+
 def prep_internet_usage():
-    """Prep file for internet usage (as proportion of population)."""
+    """Prep file for internet usage (as proportion of population).
+    
+    Downloaded from World Bank - International Telecommunication Union (ITU)
+    World Telecommunication/ICT Indicators Database
+    """
     internet_dict = pd.read_csv(path.join(
         get_input_dir(), 'API_IT/API_IT.NET.USER.ZS_DS2_en_csv_v2_1928189.csv'),
         header=2, usecols=['Country Code', '2018'],
@@ -160,7 +184,7 @@ def prep_lat_long(country_dict, min_wait=1, use_cache=True):
         with open(cache_path, 'w') as fp:
             json.dump(geo_dict, fp)
     else:
-        assert path.exists(cache_path)
+        assert path.exists(cache_path), f'{cache_path} not found, please check'
         print("Reading lat/long from cache")
         with open(cache_path, 'r') as fp:
             geo_dict = json.load(fp)
@@ -172,16 +196,24 @@ def prep_lat_long(country_dict, min_wait=1, use_cache=True):
 
 def add_metadata(df):
     """So meta."""
+    # need this to pull lat/long based on countries in data
     country_dict = df[
         ['country_dest', 'iso3_dest']
     ].drop_duplicates().set_index('country_dest')['iso3_dest'].to_dict()
+    # dictionary of {'new_col': function()}, where each function returns
+    # metadata that is being added
     for k, v in {
-        # pull lat/long based on countries in data
         'geoloc': prep_lat_long(country_dict),
         'area': prep_country_area(), 'internet': prep_internet_usage()
     }.items():
         for x in ['orig', 'dest']:
-            df[[f'{k}_{x}']] = df[f'iso3_{x}'].map(v)
+            df[f'{k}_{x}'] = df[f'iso3_{x}'].map(v)
+    # flag countries that share a land border
+    df = df.merge(
+        prep_borders(), left_on=['iso3_dest', 'iso3_orig'],
+        right_on=['iso3', 'iso3_brdr'], how='left', indicator='shares_border'
+    ).assign(shares_border=df['shares_border'].map({'left_only': 0, 'both': 1}))
+
     return df.assign(
         distance=df.apply(
             lambda x: haversine(x['geoloc_orig'], x['geoloc_dest']), axis=1),
@@ -231,25 +263,22 @@ def flag_complements(df):
     We know that not all countries of origin are represented in these data,
     since LinkedIn only shows us the top 75 hits. Identify rows that have
     the complement pair with "has_complement" column.
+
     NOTE: Should this be within query_date or across all query_dates?
     I think this depends on the model, but for now make it within
     """
     id_cols = ['query_date', 'country_orig', 'country_dest']
     # create list of tuples [(date, orig, dest)], quick to loop over &
     # easily make a dataframe from it again at the end
-    country_pairs = df[id_cols].to_records(index=False).tolist()
-    keep_pairs = []
-    for pair in country_pairs:
-        # want to get the complement of the country pair & leave date
-        complement = (pair[0],) + pair[-1:-3:-1]
-        if complement in country_pairs:
-            keep_pairs.extend([pair, complement])
-    # order of id_cols is SUPER important, possible to add a test?
+    data_pairs = df[id_cols].to_records(index=False).tolist()
+    complements = [(date, dest, orig) for date, orig, dest in country_pairs]
+    keep_pairs = list(set(data_pairs) & set(complements))
     square_df = pd.DataFrame.from_records(keep_pairs, columns=id_cols)
     return df.merge(
         square_df, how='left', indicator='has_complement').assign(
-            has_complement=lambda x: x['has_complement'].map(
+            has_complement=df['has_complement'].map(
                 {'left_only': 0, 'both': 1}))
+
 
 
 def main():
