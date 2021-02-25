@@ -7,8 +7,8 @@ Created on Fri Oct  9 10:39:43 2020
 import datetime
 import json
 from collections import defaultdict
-from itertools import product
 from os import listdir, path, pipe
+
 import numpy as np
 import pandas as pd
 import pycountry
@@ -17,23 +17,24 @@ from geopy.geocoders import Nominatim
 from haversine import haversine
 
 
-def _get_working_dir():
+def _get_working_dir(custom_dir):
     pc = path.abspath("N:/johnson/linkedin_recruiter")
-    mac = path.abspath("/Users/scharlottej13/Nextcloud/linkedin_recruiter")
-    if path.exists(pc):
-        return pc
-    elif path.exists(mac):
-        return mac
-    else:
-        raise AssertionError(f"could not find {pc} or {mac}")
+    mac = path.abspath("~/Nextcloud/linkedin_recruiter")
+    check_dirs = [pc, mac]
+    if custom_dir:
+        check_dirs.insert(0, custom_dir)
+    while check_dirs:
+        if path.exists(check_dirs[0]):
+            return check_dirs[0]
+        check_dirs.pop(0)
+    # if this line is exectued, that means no path was returned
+    assert any([path.exists(x) for x in check_dirs]), \
+        f"Working directory not found, checked:\n {check_dirs}"
 
 
-def get_input_dir():
-    return path.join(_get_working_dir(), 'inputs')
-
-
-def get_output_dir():
-    return path.join(_get_working_dir(), 'outputs')
+def get_input_dir(custom_dir=None):
+    # TODO read in filepaths from config, then set in init
+    return path.join(_get_working_dir(custom_dir), 'inputs')
 
 
 def get_latest_data():
@@ -45,6 +46,17 @@ def get_latest_data():
     else:
         # TODO build this out, not sure it matters right now
         raise NotImplementedError
+
+
+def save_output(df, filename):
+    """Auto archive output saving."""
+    today = datetime.datetime.now().date()
+    active_dir = get_input_dir()
+    archive_dir = path.join(active_dir, '_archive')
+    if not path.exists(archive_dir):
+        mkdir(archive_dir)
+    df.to_csv(path.join(active_dir, f'{filename}.csv'), index=False)
+    df.to_csv(path.join(archive_dir, f'{filename}_{today}.csv'), index=False)
 
 
 def standardize_col_names(df):
@@ -64,7 +76,7 @@ def standardize_col_names(df):
 
 def prep_country_area():
     """Clean up file with country areas.
-    
+
     Downloaded from Food and Agriculture Organization
     http://www.fao.org/faostat/en/#data/RL
     """
@@ -81,7 +93,7 @@ def _alpha2_iso3(x):
         return None
     else:
         return pycountry.countries.get(alpha_2=x).alpha_3.str.lower()
-     
+
 
 def prep_borders(df):
     """Prep borders file from GeoDataSource."""
@@ -90,9 +102,9 @@ def prep_borders(df):
         # was turning Namibia (NA) to missing
         na_values=[''], keep_default_na=False
     ).assign(
-        iso3=df['country_code'].apply(lambda x: alpha2_iso3(x))
+        iso3=df['country_code'].apply(lambda x: _alpha2_iso3(x))
     ).assign(
-        iso3_brdr=df['country_border_code'].apply(lambda x: alpha2_iso3(x)))
+        iso3_brdr=df['country_border_code'].apply(lambda x: _alpha2_iso3(x)))
     # quick check
     missing = set(df['iso3_dest']) - set(border_df['iso3'])
     assert len(missing) == 0, f'{missing} are missing from border pairs'
@@ -101,7 +113,7 @@ def prep_borders(df):
 
 def prep_language():
     """Prep data on language overlap & proximity from CEPII.
-    
+
     Paper clearly defines: col, csl, cnl, lp1, lp2. Not sure
     about the other columns.
     """
@@ -113,7 +125,7 @@ def prep_language():
 
 def prep_internet_usage():
     """Prep file for internet usage (as proportion of population).
-    
+
     Downloaded from World Bank - International Telecommunication Union (ITU)
     World Telecommunication/ICT Indicators Database
     """
@@ -133,28 +145,27 @@ def merge_region_subregion(df):
     Abel/Cohen: https://www.nature.com/articles/s41597-019-0089-3
     """
     loc_df = pd.read_csv(
-        path.join(get_input_dir(), 'UNSD-methodology.csv'), usecols=[3, 5, 11]
+        path.join(get_input_dir(), 'UNSD-methodology.csv'), usecols=[3, 5, 11],
+        header=0, names=['region', 'subregion', 'iso3']
     ).append(pd.DataFrame(
-        {'Region Name': ['Asia', 'Oceania'],
-         'Sub-region Name': ['Eastern Asia', 'Micronesia'],
-         'ISO-alpha3 Code': ['twn', 'nru']}), ignore_index=True)
-    loc_df = loc_df.assign(iso3=loc_df['ISO-alpha3 Code'].str.lower())
-    # create some dictionaries for mapping
-    subreg = loc_df.set_index('iso3')['Sub-region Name'].to_dict()
-    reg = loc_df.set_index('iso3')['Region Name'].to_dict()
+        # manually fill missing entries
+        {'region': ['Asia', 'Oceania'],
+         'subregion': ['Eastern Asia', 'Micronesia'],
+         'iso3': ['twn', 'nru']}), ignore_index=True)
     # paper from Abel & Cohen has different groups, call them "midregions"
-    midreg = pd.read_csv(path.join(get_input_dir(), 'abel_regions.csv')
-                         ).set_index('subregion_from')['midreg_from'].to_dict()
-    # map from country to region, subregion, and midregion
-    for drctn in ['orig', 'dest']:
-        df[f'{drctn}_reg'] = df[f'iso3_{drctn}'].map(reg)
-        df[f'{drctn}_subreg'] = df[f'iso3_{drctn}'].map(subreg)
-        df[f'{drctn}_midreg'] = df[f'{drctn}_subreg'].map(midreg)
-        for loc in ['reg', 'midreg', 'subreg']:
-            assert not df[f'{drctn}_{loc}'].isnull().values.any(), \
-                df.loc[
-                    df[f'{drctn}_{loc}'].isnull(), f'iso3_{drctn}'
-                ].unique()
+    loc_df = loc_df.assign(iso3=loc_df['iso3'].str.lower()).merge(
+        pd.read_csv(path.join(get_input_dir(), 'abel_regions.csv'), how='left'
+    )
+    # faster way to do this than double merge?
+    df = df.merge(
+        loc_df, how='left', left_on='iso3_orig',
+        right_on='iso3', suffixes=(None, '_orig')).merge(
+            loc_df, how='left', left_on='iso3_dest',
+            right_on='iso3', suffixes=(None, '_dest'))
+    new_cols = [f'{x}_{y}' for x in ['region', 'subregion', 'midregion']
+                for y in ['orig', 'dest']]
+    assert df[new_cols].notnull().values.any(), \
+        f"Found null values:\n{df[new_cols.isnull(), new_cols]}"
     return df
 
 
@@ -186,6 +197,7 @@ def prep_lat_long(country_dict, min_wait=1, use_cache=True):
         print("Querying Nominatim")
         # need user_agent per ToS of Nominatim
         # https://www.openstreetmap.org/copyright
+        # TODO grab username from config
         geolocator = Nominatim(user_agent='scharlottej13@gmail.com')
         # wrap in automatic error handling for timeout errors
         geocode = RateLimiter(geolocator.geocode, min_delay_seconds=min_wait)
@@ -226,14 +238,14 @@ def prep_complements(df):
     # easily make a dataframe from it again at the end
     data_pairs = df[id_cols].to_records(index=False).tolist()
     complements = [(date, dest, orig) for date, orig, dest in country_pairs]
-    # TO DO good place for a test I think
+    # TODO good place for a test I think
     keep_pairs = list(set(data_pairs) & set(complements))
     return pd.DataFrame.from_records(keep_pairs, columns=id_cols)
 
 
 def add_metadata(df):
     """So meta.
-    
+
     This function is a wrapper for a bunch of smaller functions
     that prep the metadata to be merged on. Split into parts (1)
     where two columns are created separately for origin and destination
@@ -266,8 +278,8 @@ def add_metadata(df):
     ).merge(prep_language(), how='left')
     df[['complement', 'border']] = df[['complement', 'border']].map(
         {'left_only': 0, 'both': 1})
-return df.assign(distance=df.apply(
-    lambda x: haversine(x['geoloc_orig'], x['geoloc_dest']), axis=1))
+    return df.assign(distance=df.apply(
+        lambda x: haversine(x['geoloc_orig'], x['geoloc_dest']), axis=1))
 
 
 def collapse(df, var, id_cols=None, value_col='flow'):
@@ -309,30 +321,19 @@ def main():
     df = (
         pd.read_csv(path.join(get_input_dir(), get_latest_data()))
           .pipe(standardize_col_names)
-          .pipe(merge_region_subregion)
-          .pipe(add_metadata)
-          .pipe(bin_continuous_vars, ['hdi', 'gdp'])
     )
-    # for naming outputs
-    today = datetime.datetime.now().date()
-
     # does fun stuff like pct change, std., identify new country pairs, etc.
-    data_validation(df).to_csv(
-        path.join(get_output_dir(), f'rolling_pct_change_{today}.csv'),
-        index=False)
+    save_output(data_validation(df), 'rolling_pct_change')
 
-    df = drop_bad_rows(df)
-    df = flag_complements(df)
-
-    # TO DO
-    # build archive
-    df.to_csv(path.join(get_input_dir(), f'model_input_{today}.csv'), index=False)
+    df.pipe(merge_region_subregion)
+      .pipe(drop_bad_rows)
+      .pipe(add_metadata)
+      .pipe(bin_continuous_vars, ['hdi', 'gdp'])
+      .pipe(save_output, 'model_input')
 
     # collapse by HDI, GDP, and "midregion"
     # for grp_var in ['hdi', 'gdp', 'midreg']:
-    #     collapse(df, grp_var).to_csv(
-    #         path.join(get_output_dir(), f'{grp_var}_flows_{today}.csv'),
-    #         index=False)
+    #     save_output(collapse(df, grp_var), f'{grp_var}')
 
 
 if __name__ == "__main__":
