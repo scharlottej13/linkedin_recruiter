@@ -18,15 +18,14 @@ from haversine import haversine
 
 
 def _get_working_dir(custom_dir):
-    pc = path.abspath("N:/johnson/linkedin_recruiter")
-    mac = path.abspath("~/Nextcloud/linkedin_recruiter")
+    pc = "N:/johnson/linkedin_recruiter"
+    mac = "/Users/scharlottej13/Nextcloud/linkedin_recruiter"
     check_dirs = [pc, mac]
     if custom_dir:
         check_dirs.insert(0, custom_dir)
-    while check_dirs:
-        if path.exists(check_dirs[0]):
-            return check_dirs[0]
-        check_dirs.pop(0)
+    for check_dir in check_dirs:
+        if path.exists(check_dir):
+            return check_dir
     # if this line is exectued, that means no path was returned
     assert any([path.exists(x) for x in check_dirs]), \
         f"Working directory not found, checked:\n {check_dirs}"
@@ -92,23 +91,24 @@ def _alpha2_iso3(x):
     if pd.isnull(x):
         return None
     else:
-        return pycountry.countries.get(alpha_2=x).alpha_3.str.lower()
+        return pycountry.countries.get(alpha_2=x).alpha_3.lower()
 
 
-def prep_borders(df):
+def prep_borders(flows_df):
     """Prep borders file from GeoDataSource."""
-    border_df = pd.read_csv(path.join(
+    df = pd.read_csv(path.join(
         get_input_dir(), 'country-borders/GEODATASOURCE-COUNTRY-BORDERS.CSV'),
         # was turning Namibia (NA) to missing
-        na_values=[''], keep_default_na=False
+        na_values=[''], keep_default_na=False)
+    df = df.assign(
+        # borders file has all permutations country pairs, rename for merge
+        iso3_dest=df['country_code'].apply(lambda x: _alpha2_iso3(x))
     ).assign(
-        iso3=df['country_code'].apply(lambda x: _alpha2_iso3(x))
-    ).assign(
-        iso3_brdr=df['country_border_code'].apply(lambda x: _alpha2_iso3(x)))
+        iso3_orig=df['country_border_code'].apply(lambda x: _alpha2_iso3(x)))
     # quick check
-    missing = set(df['iso3_dest']) - set(border_df['iso3'])
+    missing = set(flows_df['iso3_dest']) - set(df['iso3_dest'])
     assert len(missing) == 0, f'{missing} are missing from border pairs'
-    return border_df[['iso3', 'iso3_brdr']]
+    return df[['iso3_dest', 'iso3_orig']]
 
 
 def prep_language():
@@ -117,10 +117,13 @@ def prep_language():
     Paper clearly defines: col, csl, cnl, lp1, lp2. Not sure
     about the other columns.
     """
-    return pd.read_stata(
-        path.join(get_input_dir()), 'CEPII_language.dta',
+    df = pd.read_stata(
+        path.join(get_input_dir(), 'CEPII_language.dta'),
         columns=['iso_o', 'iso_d', 'col', 'csl', 'cnl', 'lp1', 'lp2']
     ).rename(columns={'iso_o': 'iso3_orig', 'iso_d': 'iso3_dest'})
+    df[['iso3_orig', 'iso3_dest']] = df[['iso3_orig', 'iso3_dest']].apply(
+        lambda x: x.str.lower(), axis=1)
+    return df
 
 
 def prep_internet_usage():
@@ -154,14 +157,12 @@ def merge_region_subregion(df):
          'iso3': ['twn', 'nru']}), ignore_index=True)
     # paper from Abel & Cohen has different groups, call them "midregions"
     loc_df = loc_df.assign(iso3=loc_df['iso3'].str.lower()).merge(
-        pd.read_csv(path.join(get_input_dir(), 'abel_regions.csv'), how='left'
-    )
-    # faster way to do this than double merge?
+        pd.read_csv(path.join(get_input_dir(), 'abel_regions.csv')),
+        how='left').set_index('iso3')
     df = df.merge(
-        loc_df, how='left', left_on='iso3_orig',
-        right_on='iso3', suffixes=(None, '_orig')).merge(
-            loc_df, how='left', left_on='iso3_dest',
-            right_on='iso3', suffixes=(None, '_dest'))
+        loc_df, how='left', left_on='iso3_orig', right_index=True).merge(
+            loc_df, how='left', left_on='iso3_dest', right_index=True,
+            suffixes=('_orig', '_dest'))
     new_cols = [f'{x}_{y}' for x in ['region', 'subregion', 'midregion']
                 for y in ['orig', 'dest']]
     assert df[new_cols].notnull().values.any(), \
@@ -237,7 +238,7 @@ def prep_complements(df):
     # create list of tuples [(date, orig, dest)], quick to loop over &
     # easily make a dataframe from it again at the end
     data_pairs = df[id_cols].to_records(index=False).tolist()
-    complements = [(date, dest, orig) for date, orig, dest in country_pairs]
+    complements = [(date, dest, orig) for date, orig, dest in data_pairs]
     # TODO good place for a test I think
     keep_pairs = list(set(data_pairs) & set(complements))
     return pd.DataFrame.from_records(keep_pairs, columns=id_cols)
@@ -272,12 +273,11 @@ def add_metadata(df):
     border_df = prep_borders(df)
     complement_df = prep_complements(df)
     df = df.merge(
-        border_df, left_on=['iso3_dest', 'iso3_orig'],
-        right_on=['iso3', 'iso3_brdr'], how='left', indicator='border'
-    ).merge(complement_df, how='left', indicator='complement'
-    ).merge(prep_language(), how='left')
-    df[['complement', 'border']] = df[['complement', 'border']].map(
-        {'left_only': 0, 'both': 1})
+        border_df, how='left', indicator='border').merge(
+            complement_df, how='left', indicator='complement').merge(
+                prep_language(), how='left')
+    df[['complement', 'border']] = df[['complement', 'border']].apply(
+        lambda x: x.map({'left_only': 0, 'both': 1}), axis=1)
     return df.assign(distance=df.apply(
         lambda x: haversine(x['geoloc_orig'], x['geoloc_dest']), axis=1))
 
@@ -325,11 +325,11 @@ def main():
     # does fun stuff like pct change, std., identify new country pairs, etc.
     save_output(data_validation(df), 'rolling_pct_change')
 
-    df.pipe(merge_region_subregion)
-      .pipe(drop_bad_rows)
-      .pipe(add_metadata)
-      .pipe(bin_continuous_vars, ['hdi', 'gdp'])
-      .pipe(save_output, 'model_input')
+    (df.pipe(merge_region_subregion)
+       .pipe(drop_bad_rows)
+       .pipe(add_metadata)
+       .pipe(bin_continuous_vars, ['hdi', 'gdp'])
+       .pipe(save_output, 'model_input'))
 
     # collapse by HDI, GDP, and "midregion"
     # for grp_var in ['hdi', 'gdp', 'midreg']:
