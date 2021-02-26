@@ -94,23 +94,6 @@ def _alpha2_iso3(x):
         return pycountry.countries.get(alpha_2=x).alpha_3.lower()
 
 
-def prep_borders(flows_df):
-    """Prep borders file from GeoDataSource."""
-    df = pd.read_csv(path.join(
-        get_input_dir(), 'country-borders/GEODATASOURCE-COUNTRY-BORDERS.CSV'),
-        # was turning Namibia (NA) to missing
-        na_values=[''], keep_default_na=False)
-    df = df.assign(
-        # borders file has all permutations country pairs, rename for merge
-        iso3_dest=df['country_code'].apply(lambda x: _alpha2_iso3(x))
-    ).assign(
-        iso3_orig=df['country_border_code'].apply(lambda x: _alpha2_iso3(x)))
-    # quick check
-    missing = set(flows_df['iso3_dest']) - set(df['iso3_dest'])
-    assert len(missing) == 0, f'{missing} are missing from border pairs'
-    return df[['iso3_dest', 'iso3_orig']]
-
-
 def prep_language():
     """Prep data on language overlap & proximity from CEPII.
 
@@ -253,7 +236,7 @@ def add_metadata(df):
     and (2) where one column is created from the origin, destination pair
     """
     # (1) two new columns, separate for origin + destination
-    # need this to pull lat/long based on countries in data
+    # pull lat/long based on countries in data
     country_dict = df[
         ['country_dest', 'iso3_dest']
     ].drop_duplicates().set_index('country_dest')['iso3_dest'].to_dict()
