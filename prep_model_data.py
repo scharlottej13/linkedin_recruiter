@@ -80,9 +80,10 @@ def prep_country_area():
     http://www.fao.org/faostat/en/#data/RL
     """
     df = pd.read_csv(path.join(get_input_dir(), 'FAO/FAOSTAT_data_2-1-2021.csv'))
+    # some iso3 codes are numeric, OK locations not in LI data
     df = df.dropna(axis=0, subset=['Value']).assign(
-        # some iso3 codes are numeric, OK locations not in LI data
-        # convert to sq km from hectares
+        # convert to sq km from hectares (?)
+        # *should* 1:100, but when you check the values it's 1:10
         iso3=df['Area Code'].str.lower(), Value=df['Value'] * 10)
     return df.set_index('iso3')['Value'].to_dict()
 
@@ -253,7 +254,6 @@ def add_metadata(df):
             else:
                 df[f'{k}_{x}'] = df[f'users_{x}'] / df[f'pop_{x}']
     # (2) one new column, based on origin/destination pair
-    border_df = prep_borders(df)
     complement_df = prep_complements(df)
     df = df.merge(
         border_df, how='left', indicator='border').merge(
