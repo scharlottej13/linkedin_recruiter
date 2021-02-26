@@ -1,20 +1,12 @@
-"""
-Created on Fri Oct  9 10:39:43 2020
-
-@author: johnson
-"""
+"""Prep dyadic LinkedIn Recruiter data for all countries."""
 
 import datetime
-import json
 from collections import defaultdict
-from os import listdir, path, pipe
+from os import listdir, path, pipe, mkdir
 
 import numpy as np
 import pandas as pd
-import pycountry
-from geopy.extra.rate_limiter import RateLimiter
-from geopy.geocoders import Nominatim
-from haversine import haversine
+from pycountry import countries
 
 
 def _get_working_dir(custom_dir):
@@ -26,7 +18,7 @@ def _get_working_dir(custom_dir):
     for check_dir in check_dirs:
         if path.exists(check_dir):
             return check_dir
-    # if this line is exectued, that means no path was returned
+    # if this line is exectued, no path was returned
     assert any([path.exists(x) for x in check_dirs]), \
         f"Working directory not found, checked:\n {check_dirs}"
 
@@ -65,11 +57,11 @@ def standardize_col_names(df):
     }
     for k, v in replace_dict.items():
         df.columns = df.columns.str.replace(k, v)
-    drop_cols = ['Unnamed: 0', 'query_time_round', 'normalized1', 'normalized2']
+    drop = ['Unnamed: 0', 'query_time_round', 'normalized1', 'normalized2']
     return (
         df.rename(columns={'number_people_who_indicated': 'flow'})
           .assign(query_date=df['query_time_round'].str[:-9])
-          .drop(drop_cols, axis=1, errors='ignore')
+          .drop(drop, axis=1, errors='ignore')
     )
 
 
@@ -79,20 +71,23 @@ def prep_country_area():
     Downloaded from Food and Agriculture Organization
     http://www.fao.org/faostat/en/#data/RL
     """
-    df = pd.read_csv(path.join(get_input_dir(), 'FAO/FAOSTAT_data_2-1-2021.csv'))
-    # some iso3 codes are numeric, OK locations not in LI data
-    df = df.dropna(axis=0, subset=['Value']).assign(
-        # convert to sq km from hectares (?)
-        # *should* 1:100, but when you check the values it's 1:10
-        iso3=df['Area Code'].str.lower(), Value=df['Value'] * 10)
-    return df.set_index('iso3')['Value'].to_dict()
+    return pd.read_csv(
+        path.join(get_input_dir(), 'FAO/FAOSTAT_data_2-1-2021.csv'),
+        converters={
+            'Area Code': lambda x: str.lower(x),
+            'Value': lambda x: x * 10
+        }).dropna(subset=['Value']).set_index('Area Code')['Value'].to_dict()
 
 
-def _alpha2_iso3(x):
-    if pd.isnull(x):
-        return None
-    else:
-        return pycountry.countries.get(alpha_2=x).alpha_3.lower()
+def prep_geo():
+    """Prep data on relevant geographic variables from CEPII.
+
+    Includes: distance, contiguity, colonial relationships
+    """
+    return pd.read_excel(
+        path.join(get_input_dir(), 'CEPII_distance/dist_cepii.xls'),
+        converters=dict(zip(['iso_o', 'iso_d'], [lambda x: str.lower(x)]*2))
+    ).set_index(['iso_o', 'iso_d'])
 
 
 def prep_language():
@@ -101,13 +96,12 @@ def prep_language():
     Paper clearly defines: col, csl, cnl, lp1, lp2. Not sure
     about the other columns.
     """
-    df = pd.read_stata(
-        path.join(get_input_dir(), 'CEPII_language.dta'),
+    return pd.read_stata(
+        path.join(get_input_dir(), 'CEPII_language/CEPII_language.dta'),
         columns=['iso_o', 'iso_d', 'col', 'csl', 'cnl', 'lp1', 'lp2']
-    ).rename(columns={'iso_o': 'iso3_orig', 'iso_d': 'iso3_dest'})
-    df[['iso3_orig', 'iso3_dest']] = df[['iso3_orig', 'iso3_dest']].apply(
-        lambda x: x.str.lower(), axis=1)
-    return df
+    ).assign(iso_o=lambda x: x['iso_o'].str.lower(),
+             iso_d=lambda x: x['iso_d'].str.lower()).set_index(
+                 ['iso_o', 'iso_d'])
 
 
 def prep_internet_usage():
@@ -116,14 +110,27 @@ def prep_internet_usage():
     Downloaded from World Bank - International Telecommunication Union (ITU)
     World Telecommunication/ICT Indicators Database
     """
-    internet_dict = pd.read_csv(path.join(
-        get_input_dir(), 'API_IT/API_IT.NET.USER.ZS_DS2_en_csv_v2_1928189.csv'),
+    internet_dict = pd.read_csv(
+        path.join(
+            get_input_dir(),
+            'API_IT/API_IT.NET.USER.ZS_DS2_en_csv_v2_1928189.csv'),
         header=2, usecols=['Country Code', '2018'],
         converters={'Country Code': lambda x: str.lower(x)}
-    ).dropna(axis=0, subset=['2018']).set_index('Country Code')['2018'].to_dict()
+    ).dropna(subset=['2018']).set_index('Country Code')['2018'].to_dict()
     # these are probably not very accurate, I just googled them
     internet_dict.update({'tca': 81.0, 'imn': 71.0})
     return {k: v / 100 for k, v in internet_dict.items()}
+
+
+def prep_eu_states():
+    """Flag eu, eurozone, schengen member countries.
+
+    Data pulled from europa.eu
+    """
+    return pd.read_csv(
+        path.join(get_input_dir(), 'eu_countries.csv'),
+        converters={'country': lambda x: countries.get(name=x).alpha_3.lower()}
+    ).set_index('country')
 
 
 def merge_region_subregion(df):
@@ -176,39 +183,7 @@ def bin_continuous_vars(df, cont_vars: list, q: int = 5):
     return df
 
 
-def prep_lat_long(country_dict, min_wait=1, use_cache=True):
-    cache_path = path.join(get_input_dir(), 'latlong.json')
-    if not use_cache:
-        print("Querying Nominatim")
-        # need user_agent per ToS of Nominatim
-        # https://www.openstreetmap.org/copyright
-        # TODO grab username from config
-        geolocator = Nominatim(user_agent='scharlottej13@gmail.com')
-        # wrap in automatic error handling for timeout errors
-        geocode = RateLimiter(geolocator.geocode, min_delay_seconds=min_wait)
-        geo_dict = defaultdict(tuple)
-        for country in country_dict.keys():
-            loc = geocode(country)
-            # lat, long of center of country, differs from
-            # Cohen et al. use distance between capitals, but I think this is
-            # more realistic for big countries, negligible for small countries
-            geo_dict.update({country: (loc.latitude, loc.longitude)})
-        # cache result, do not test the gods of osm
-        print("Saving results to cache")
-        with open(cache_path, 'w') as fp:
-            json.dump(geo_dict, fp)
-    else:
-        assert path.exists(cache_path), f'{cache_path} not found, please check'
-        print("Reading lat/long from cache")
-        with open(cache_path, 'r') as fp:
-            geo_dict = json.load(fp)
-    # error w/ Dominica, != Dominican Republic
-    geo_dict.update({'Dominica': [15.4150, -61.3710]})
-    # convert to iso3 for consistency
-    return {country_dict[k]: v for k, v in geo_dict.items()}
-
-
-def prep_complements(df):
+def flag_complements(df):
     """Create dataframe of only complementary origin, destination pairs.
 
     We know that not all countries of origin are represented in these data,
@@ -223,46 +198,44 @@ def prep_complements(df):
     # easily make a dataframe from it again at the end
     data_pairs = df[id_cols].to_records(index=False).tolist()
     complements = [(date, dest, orig) for date, orig, dest in data_pairs]
-    # TODO good place for a test I think
+    # TODO good place for a test?
     keep_pairs = list(set(data_pairs) & set(complements))
-    return pd.DataFrame.from_records(keep_pairs, columns=id_cols)
+    return df.merge(
+        pd.DataFrame.from_records(keep_pairs, columns=id_cols),
+        how='left', indicator='comp'
+    ).assign(comp=lambda x: x['comp'].map({'left_only': 0, 'both': 1}))
 
 
 def add_metadata(df):
     """So meta.
 
-    This function is a wrapper for a bunch of smaller functions
-    that prep the metadata to be merged on. Split into parts (1)
-    where two columns are created separately for origin and destination
-    and (2) where one column is created from the origin, destination pair
+    Wrapper for many smaller functions that prep metadata to be merged on.
+    Split into parts (1) where two columns are created separately for origin
+    and destination and (2) where one new column is created from the
+    origin, destination pair
     """
     # (1) two new columns, separate for origin + destination
-    # pull lat/long based on countries in data
-    country_dict = df[
-        ['country_dest', 'iso3_dest']
-    ].drop_duplicates().set_index('country_dest')['iso3_dest'].to_dict()
-    # dictionary of {'new_col': function()}, where each function returns
-    # metadata that is being added
-    for k, v in {
-        'geoloc': prep_lat_long(country_dict),
-        'area': prep_country_area(), 'internet': prep_internet_usage(),
-        'prop': None
-    }.items():
+    area_map = prep_country_area()
+    int_use = prep_internet_usage()
+    for k, v in {'prop': None, 'area': area_map, 'internet': int_use}.items():
         for x in ['orig', 'dest']:
             if k != 'prop':
                 df[f'{k}_{x}'] = df[f'iso3_{x}'].map(v)
             else:
                 df[f'{k}_{x}'] = df[f'users_{x}'] / df[f'pop_{x}']
-    # (2) one new column, based on origin/destination pair
-    complement_df = prep_complements(df)
+    eu = prep_eu_states()
+    new_eu_cols = [f'{x}_{y}' for x in eu.columns for y in ['orig', 'dest']]
     df = df.merge(
-        border_df, how='left', indicator='border').merge(
-            complement_df, how='left', indicator='complement').merge(
-                prep_language(), how='left')
-    df[['complement', 'border']] = df[['complement', 'border']].apply(
-        lambda x: x.map({'left_only': 0, 'both': 1}), axis=1)
-    return df.assign(distance=df.apply(
-        lambda x: haversine(x['geoloc_orig'], x['geoloc_dest']), axis=1))
+        eu, how='left', right_index=True, left_on='iso3_orig'
+    ).merge(eu, how='left', right_index=True, left_on='iso3_dest',
+            suffixes=('_orig', '_dest')).fillna(
+                dict(zip(new_eu_cols, [0] * len(new_eu_cols)))
+    ).astype(dict(zip(new_eu_cols, [int] * len(new_eu_cols))))
+    # (2) one new column, based on origin/destination pair
+    kwargs = {'how': 'left', 'left_on': ['iso3_orig', 'iso3_dest'],
+              'right_index': True}
+    df = df.merge(prep_geo(), **kwargs).merge(prep_language(), **kwargs)
+    return flag_complements(df)
 
 
 def collapse(df, var, id_cols=None, value_col='flow'):
@@ -292,12 +265,15 @@ def data_validation(df, diff_col='query_date'):
 
 def drop_bad_rows(df):
     # found these manually using standard deviation
-    big = ((df['query_date'] == '2020-10-08') &
-           (df['iso3_dest'] == 'caf') &
-           (df['iso3_orig'].isin(['usa', 'ind', 'gbr', 'deu', 'esp', 'can', 'pol', 'nld'])))
-    # few of these, they do not belong
+    too_big = (
+        (df['query_date'] == '2020-10-08') &
+        (df['iso3_dest'] == 'caf') &
+        (df['iso3_orig'].isin(['usa', 'ind', 'gbr', 'deu', 'esp',
+                               'can', 'pol', 'nld']))
+    )
+    # few of these, drop b/c should not be possible
     same = (df['iso3_dest'] == df['iso3_orig'])
-    return df[~(big | same)]
+    return df[~(too_big | same)]
 
 
 def main():
