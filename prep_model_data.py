@@ -3,10 +3,11 @@
 import datetime
 from collections import defaultdict
 from os import listdir, path, pipe, mkdir
+import re
 
 import numpy as np
 import pandas as pd
-from pycountry import countries
+from pycountry import countries, historic_countries
 
 
 def _get_working_dir(custom_dir):
@@ -88,6 +89,63 @@ def prep_geo():
         path.join(get_input_dir(), 'CEPII_distance/dist_cepii.xls'),
         converters=dict(zip(['iso_o', 'iso_d'], [lambda x: str.lower(x)]*2))
     ).set_index(['iso_o', 'iso_d'])
+
+
+def get_iso3(x):
+    """Helper function to get iso3 from country name.
+    
+    Probably a cleaner way to do this. Examples of changes:
+    Taiwan (Province of China) -> Taiwan, Province of China
+    United Arab Emirates (the) -> United Arab Emirates
+    """
+    print(x)
+
+    if countries.get(name=x):
+        return countries.get(name=x).alpha_3
+    elif historic_countries.get(name=x):
+        return historic_countries.get(name=x).alpha_3
+    else:
+        try:
+            results = countries.search_fuzzy(x)
+        except LookupError:
+            pattern = re.compile(r'\s\((.+)\)', flags=re.IGNORECASE)
+            splits = pattern.split(x)
+            print(splits)
+            # exception, eg Sudan (the) -> the sudan
+            if set(splits) & set(['Niger', 'Sudan']):
+                search_string = f'{splits[1]} {splits[0]}'
+            # eg Netherlands (the) -> Netherlands
+            elif 'the' in splits:
+                search_string = f'{splits[0]}'
+            # rule: remove parentheses, separate w/ comma instead
+            # eg Iran (Islamic Republic of) -> Iran, Islamic Republic of
+            else:
+                # except eg. Korea (the Republic of) -> Korea, Republic of
+                if set(splits) & set(['Korea', 'Moldova']):
+                    search_string = f"{splits[0]}, {splits[1].replace('the ', '')}"
+                else:
+                    search_string = f'{splits[0]}, {splits[1]}'
+            print(search_string)
+            results = countries.search_fuzzy(search_string)
+        assert len(results) == 1, f"check this: {results}"
+        return results[0].alpha_3.lower()
+
+
+def prep_geo2():
+    """Prep data on relevant geographic variables from Maciej Danko.
+
+    Includes: origin, dest - origin and destination country names
+    origin.NC, dest.NC - number of cities used to calculate distances (max 50)
+    pop_weighted - population weighted distances
+    average - average distances (no pop weights)
+    biggest_cit - distance between biggest cities
+    """
+    return pd.read_csv(
+        path.join(get_input_dir(), 'maciej_distance/geo_distances.csv'),
+        converters=dict(zip(
+            ['Origin', 'Dest'], [lambda x: get_iso3(x)]*2
+        ))
+    ).set_index(['Origin', 'Dest'])
 
 
 def prep_language():
