@@ -92,47 +92,19 @@ def prep_geo():
 
 
 def get_iso3(x):
-    """Helper function to get iso3 from country name.
-    
-    Probably a cleaner way to do this. Examples of changes:
-    Taiwan (Province of China) -> Taiwan, Province of China
-    United Arab Emirates (the) -> United Arab Emirates
-    """
+    """Helper function to get iso3 from iso2."""
     print(x)
-
-    if countries.get(name=x):
-        return countries.get(name=x).alpha_3
-    elif historic_countries.get(name=x):
-        return historic_countries.get(name=x).alpha_3
+    country_info = countries.get(alpha_2=x)
+    if country_info:
+        return country_info.alpha_3
+    elif historic_countries.get(alpha_2=x):
+        return historic_countries.get(alpha_2=x).alpha_3
     else:
-        try:
-            results = countries.search_fuzzy(x)
-        except LookupError:
-            pattern = re.compile(r'\s\((.+)\)', flags=re.IGNORECASE)
-            splits = pattern.split(x)
-            print(splits)
-            # exception, eg Sudan (the) -> the sudan
-            if set(splits) & set(['Niger', 'Sudan']):
-                search_string = f'{splits[1]} {splits[0]}'
-            # eg Netherlands (the) -> Netherlands
-            elif 'the' in splits:
-                search_string = f'{splits[0]}'
-            # rule: remove parentheses, separate w/ comma instead
-            # eg Iran (Islamic Republic of) -> Iran, Islamic Republic of
-            else:
-                # except eg. Korea (the Republic of) -> Korea, Republic of
-                if set(splits) & set(['Korea', 'Moldova']):
-                    search_string = f"{splits[0]}, {splits[1].replace('the ', '')}"
-                else:
-                    search_string = f'{splits[0]}, {splits[1]}'
-            print(search_string)
-            results = countries.search_fuzzy(search_string)
-        assert len(results) == 1, f"check this: {results}"
-        return results[0].alpha_3.lower()
+        print(f"{x} not found")
 
 
 def prep_geo2():
-    """Prep data on relevant geographic variables from Maciej Danko.
+    """Prep data on distance from Maciej Danko.
 
     Includes: origin, dest - origin and destination country names
     origin.NC, dest.NC - number of cities used to calculate distances (max 50)
@@ -140,12 +112,18 @@ def prep_geo2():
     average - average distances (no pop weights)
     biggest_cit - distance between biggest cities
     """
-    return pd.read_csv(
-        path.join(get_input_dir(), 'maciej_distance/geo_distances.csv'),
-        converters=dict(zip(
-            ['Origin', 'Dest'], [lambda x: get_iso3(x)]*2
-        ))
-    ).set_index(['Origin', 'Dest'])
+    df = pd.read_csv(
+        path.join(get_input_dir(), 'maciej_distance/DISTANCE.csv'
+    ))
+    df = df[
+        (df['variable'] == 'dist_pop_weighted') &
+        (df['src_ref_db'] == 'maps{R}&geosphere{R}')
+    ]
+    iso2_list = df.loc[df['origin2'] != 'MIC', 'origin2'].unique()
+    iso2_3 = dict(zip(iso2_list, [get_iso3(x) for x in iso2_list]))
+    df[['origin2', 'dest2']] = df[['origin2', 'dest2']].apply(
+        lambda x: x.map(iso2_3))
+    return df.set_index(['origin2', 'dest2'])[['values']]
 
 
 def prep_language():
