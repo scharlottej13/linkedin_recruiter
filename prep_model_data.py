@@ -26,6 +26,7 @@ def _get_working_dir(custom_dir):
 
 def get_input_dir(custom_dir=None):
     # TODO read in filepaths from config, then set in init
+    # don't love how this f'n is called all the time
     return path.join(_get_working_dir(custom_dir), 'inputs')
 
 
@@ -54,16 +55,12 @@ def save_output(df, filename):
 def standardize_col_names(df):
     replace_dict = {
         '_x': '_orig', '_y': '_dest', '_from': '_orig', 'population': 'pop',
-        '_to': '_dest', 'linkedin': '', 'countrycode': 'iso3'
-    }
-    for k, v in replace_dict.items():
-        df.columns = df.columns.str.replace(k, v)
+        '_to': '_dest', 'linkedin': '', 'countrycode': 'iso3',
+        'number_people_who_indicated': 'flow', 'max': ''}
+    df.columns = df.columns.to_series().replace(replace_dict, regex=True)
     drop = ['Unnamed: 0', 'query_time_round', 'normalized1', 'normalized2']
-    return (
-        df.rename(columns={'number_people_who_indicated': 'flow'})
-          .assign(query_date=df['query_time_round'].str[:-9])
-          .drop(drop, axis=1, errors='ignore')
-    )
+    return (df.assign(query_date=df['query_time_round'].str[:-9])
+              .drop(drop, axis=1, errors='ignore'))
 
 
 def prep_country_area():
@@ -84,6 +81,12 @@ def prep_geo():
     """Prep data on relevant geographic variables from CEPII.
 
     Includes: distance, contiguity, colonial relationships
+    dist: Geodesic distances from lat/long of most populous cities
+    distcap: geodesic distance between capital cities
+    distw: population weighted distance, theta = 1
+    distwecs: population weighted distance, theta = -1
+    contig: share a border
+    comcol, colony, col45, curcol: colonial relationships
     """
     return pd.read_excel(
         path.join(get_input_dir(), 'CEPII_distance/dist_cepii.xls'),
@@ -230,7 +233,7 @@ def flag_complements(df):
     I think this depends, but for now make it within
     """
     id_cols = ['query_date', 'country_orig', 'country_dest']
-    # create list of tuples [(date, orig, dest)], quick to loop over &
+    # use list of tuples [(date, orig, dest)] b/c quick to loop over &
     # easily make a dataframe from it again at the end
     data_pairs = df[id_cols].to_records(index=False).tolist()
     complements = [(date, dest, orig) for date, orig, dest in data_pairs]
@@ -240,6 +243,19 @@ def flag_complements(df):
         pd.DataFrame.from_records(keep_pairs, columns=id_cols),
         how='left', indicator='comp'
     ).assign(comp=lambda x: x['comp'].map({'left_only': 0, 'both': 1}))
+
+
+def get_net_migration(df, value_col='flow', add_cols=['query_date']):
+    orig_cols = ['iso3_orig'] + add_cols
+    dest_cols = ['iso3_dest'] + add_cols
+    has_comp = (df['comp'] == 1)
+    return df.assign(
+        # immigrants - emigrants
+        net_flow=lambda x:
+        x[has_comp].groupby(dest_cols)[value_col].transform(sum) -
+        x[has_comp].groupby(orig_cols)[value_col].transform(sum),
+        # use 100 to compare w/ GWP
+        net_rate_100=lambda x: (x['net_flow'] / x['users_orig']) * 100)
 
 
 def add_metadata(df):
@@ -263,15 +279,23 @@ def add_metadata(df):
     new_eu_cols = [f'{x}_{y}' for x in eu.columns for y in ['orig', 'dest']]
     df = df.merge(
         eu, how='left', right_index=True, left_on='iso3_orig'
-    ).merge(eu, how='left', right_index=True, left_on='iso3_dest',
-            suffixes=('_orig', '_dest')).fillna(
-                dict(zip(new_eu_cols, [0] * len(new_eu_cols)))
+    ).merge(
+        eu, how='left', right_index=True, left_on='iso3_dest',
+        suffixes=('_orig', '_dest')
+    # fill unmerged rows w/ 0 for columns added from 'eu'
+    ).fillna(dict(zip(new_eu_cols, [0] * len(new_eu_cols)))
+    # fix sneaky floats created from previous NAs
     ).astype(dict(zip(new_eu_cols, [int] * len(new_eu_cols))))
     # (2) one new column, based on origin/destination pair
-    kwargs = {'how': 'left', 'left_on': ['iso3_orig', 'iso3_dest'],
-              'right_index': True}
-    df = df.merge(prep_geo(), **kwargs).merge(prep_language(), **kwargs)
-    return flag_complements(df)
+    kwargs = {
+        'how': 'left', 'left_on': ['iso3_orig', 'iso3_dest'],
+        'right_index': True
+    }
+    return (
+        df.merge(prep_geo(), **kwargs).merge(prep_language(), **kwargs)
+        .pipe(flag_complements)
+        .pipe(get_net_migration)
+    )
 
 
 def collapse(df, var, id_cols=None, value_col='flow'):
