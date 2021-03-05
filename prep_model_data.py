@@ -94,9 +94,8 @@ def prep_geo():
     ).set_index(['iso_o', 'iso_d'])
 
 
-def get_iso3(x):
+def _get_iso3(x):
     """Helper function to get iso3 from iso2."""
-    print(x)
     country_info = countries.get(alpha_2=x)
     if country_info:
         return country_info.alpha_3
@@ -116,14 +115,20 @@ def prep_geo2():
     biggest_cit - distance between biggest cities
     """
     df = pd.read_csv(
-        path.join(get_input_dir(), 'maciej_distance/DISTANCE.csv'
+        path.join(get_input_dir(), 'maciej_distance/DISTANCE.csv',
+        keep_default_na=False,
+        # NA iso2 in origin/dest columns is not a null value
+        na_values=dict(zip(['variable', 'src_ref_db', 'values'], ['NA']))
     ))
     df = df[
         (df['variable'] == 'dist_pop_weighted') &
         (df['src_ref_db'] == 'maps{R}&geosphere{R}')
     ]
-    iso2_list = df.loc[df['origin2'] != 'MIC', 'origin2'].unique()
-    iso2_3 = dict(zip(iso2_list, [get_iso3(x) for x in iso2_list]))
+    # I think this is Micronesia, should be FM TODO check w/ Maciej
+    df[['origin2', 'dest2']] = df[['origin2', 'dest2']].replace('MIC', 'FM')
+    # create dictionary of {iso2: iso3}, faster than looping through whole df?
+    iso2s = df['origin2'].unique()
+    iso2_3 = dict(zip(iso2s, [_get_iso3(x) for x in iso2s]))
     df[['origin2', 'dest2']] = df[['origin2', 'dest2']].apply(
         lambda x: x.map(iso2_3))
     return df.set_index(['origin2', 'dest2'])[['values']]
