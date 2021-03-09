@@ -103,9 +103,6 @@ def check_geo(cepii, maciej):
 def prep_geo():
     """Prep data on relevant geographic variables.
 
-    One file from CEPII, other from Maciej. Use distance variables from
-    Maciej and others from CEPII.
-
     CEPII
     dist: Geodesic distances from lat/long of most populous cities
     distcap: geodesic distance between capital cities
@@ -113,9 +110,12 @@ def prep_geo():
     distwces: population weighted distance, theta = -1
     contig: share a border
     comcol, colony, col45, curcol: colonial relationships
+
     Maciej
-    dist_pop_weighted: most simliar to 'distwces' from CEPII
-    dist_biggest_cities, dist_unweighted
+    dist_pop_weighted: average bilateral population-weighted distance
+    dist_biggest_cities: average bilateral population-weighted distance
+    ^ most similar distwces TODO double check w/ Maciej how these differ
+    dist_unweighted: average bilateral distance TODO capital cities?
     """
     cepii =  pd.read_excel(
         path.join(get_input_dir(), 'CEPII_distance/dist_cepii.xls'),
@@ -125,10 +125,11 @@ def prep_geo():
         keep_default_na=False,
         # NA iso2 in origin/dest columns is not a null value, but Namibia
         na_values=dict(zip(['variable', 'src_ref_db', 'values'], ['NA']))
+    # drop cepii calculated values
     ).query("src_ref_db == 'maps{R}&geosphere{R}'").pivot(
+        # reshape from long to wide on distance variable
         index=['origin2', 'dest2'], columns='variable', values='values'
-    # fix micronesia, and united kingdom
-    # confirmed by checking geo_distances.csv
+    # fix micronesia, and united kingdom, checked geo_distances.csv
     ).reset_index().replace({'MIC': 'FM', 'UK': 'GB'})
     # create dictionary of {iso2: iso3}, faster than looping through whole df?
     iso2s = maciej['origin2'].unique()
@@ -141,13 +142,14 @@ def prep_geo():
     # merge two 'databases' together
     geo_df = maciej.set_index(['origin2', 'dest2']).merge(
         cepii, how='outer', left_index=True, right_on=['iso_o', 'iso_d'])
-    # quick fix TODO check w/ Maciej or recalculate w/ latlong from cepii
+    # fill null distances TODO calculate from latlong w/ Maciej's method
     return geo_df.fillna(
         {'dist_pop_weighted': geo_df['distwces'],
          'dist_biggest_cities': geo_df['distwces'],
          'dist_unweighted': geo_df['dist']}
     ).drop(['comlang_off', 'dist', 'distcap', 'distw', 'distwces'], axis=1
     ).set_index(['iso_o', 'iso_d'])
+
 
 def prep_language():
     """Prep data on language overlap & proximity from CEPII.
@@ -279,6 +281,38 @@ def get_net_migration(df, value_col='flow', add_cols=['query_date']):
         net_rate_100=lambda x: (x['net_flow'] / x['users_orig']) * 100)
 
 
+def data_validation(df, diff_col='query_date'):
+    # check percent difference between the two dates of data collection
+    value_cols = ['flow', 'users_orig', 'users_dest']
+    id_cols = ['iso3_dest', 'iso3_orig']
+    assert not df[id_cols + [diff_col]].duplicated().values.any()
+    assert not (df['flow'] == 0).values.any()
+    # % chg f'n from previous row, pivot so rows are each query date
+    # 1st unstack moves the id cols to the index
+    # 2nd unstack(0) reshapes so value variables are columns
+    return pd.pivot_table(
+        df, values=value_cols, index=diff_col, columns=id_cols).fillna(
+        0).pct_change(fill_method='ffill').unstack().unstack(0).reset_index(
+    ).merge(
+        # lastly, merge on original values
+        df[id_cols + value_cols + [diff_col]],
+        on=id_cols + [diff_col], how='right', suffixes=('_pct_change', '')
+    ).assign(flow_std=df.groupby(id_cols)['flow'].transform('std'))
+
+
+def drop_bad_rows(df):
+    # found these manually using standard deviation
+    too_big = (
+        (df['query_date'] == '2020-10-08') &
+        (df['iso3_dest'] == 'caf') &
+        (df['iso3_orig'].isin(['usa', 'ind', 'gbr', 'deu', 'esp',
+                               'can', 'pol', 'nld']))
+    )
+    # few of these, drop b/c should not be possible
+    same = (df['iso3_dest'] == df['iso3_orig'])
+    return df[~(too_big | same)]
+
+
 def add_metadata(df):
     """So meta.
 
@@ -319,45 +353,48 @@ def add_metadata(df):
     )
 
 
+def fill_missing_borders(df):
+    """Use country-borders to fill missing 'neighbor' values in CEPII."""
+    url = "https://raw.githubusercontent.com/geodatasource/"\
+          "country-borders/master/GEODATASOURCE-COUNTRY-BORDERS.CSV"
+    # contains all reciprocal pairs of countries *except* if a country
+    # has no land borders, then country_border_code is Null
+    borders = pd.read_csv(
+        url, na_values=[''], keep_default_na=False,
+        usecols=['country_code', 'country_border_code'],
+        converters=dict(zip(
+            ['country_code', 'country_border_code'], [lambda x: _get_iso3(x)]*2
+        ))
+    ).rename(columns={'country_code': 'iso3_orig', 'country_border_code': 'iso3_dest'})
+    borderless = borders.loc[borders['iso3_dest'].isnull(), 'iso3_orig'].unique()
+    df = df.merge(borders, how='left', indicator='neighbor')
+    df.loc[
+        (df['contig'].isnull() & df['neighbor'] == 'both'), 'contig'
+    ] = 1
+    df.loc[(
+        df['contig'].isnull() &
+        (df['iso3_orig'].isin(borderless) | df['iso3_dest'].isin(borderless))
+    ), 'contig'] = 0
+    return df.drop('neighbor', axis=1)
+
+
+def final_checks_fixes(df):
+    """Checks and possible fixes before saving."""
+    df = fill_missing_borders(df)
+    id_cols = ['iso3_orig', 'iso3_dest', 'query_date']
+    check_cols = ['country_orig', 'country_dest', 'flow', 'query_date']
+    dups = df[df[id_cols].duplicated()][check_cols]
+    assert len(dups) == 0, \
+        f"Found duplicates across {id_cols}\n {dups.head()}"
+
+
 def collapse(df, var, id_cols=None, value_col='flow'):
     if id_cols is None:
         id_cols = [f'orig_{var}', f'dest_{var}', 'query_date']
     return df.groupby(id_cols)[value_col].sum().reset_index()
 
 
-def data_validation(df, diff_col='query_date'):
-    # check percent difference between the two dates of data collection
-    value_cols = ['flow', 'users_orig', 'users_dest']
-    id_cols = ['iso3_dest', 'iso3_orig']
-    assert not df[id_cols + [diff_col]].duplicated().values.any()
-    assert not (df['flow'] == 0).values.any()
-    # % chg f'n from previous row, pivot so rows are each query date
-    # 1st unstack moves the id cols to the index
-    # 2nd unstack(0) reshapes so value variables are columns
-    return pd.pivot_table(
-        df, values=value_cols, index=diff_col, columns=id_cols).fillna(
-        0).pct_change(fill_method='ffill').unstack().unstack(0).reset_index(
-    ).merge(
-        # lastly, merge on original values
-        df[id_cols + value_cols + [diff_col]],
-        on=id_cols + [diff_col], how='right', suffixes=('_pct_change', '')
-    ).assign(flow_std=df.groupby(id_cols)['flow'].transform('std'))
-
-
-def drop_bad_rows(df):
-    # found these manually using standard deviation
-    too_big = (
-        (df['query_date'] == '2020-10-08') &
-        (df['iso3_dest'] == 'caf') &
-        (df['iso3_orig'].isin(['usa', 'ind', 'gbr', 'deu', 'esp',
-                               'can', 'pol', 'nld']))
-    )
-    # few of these, drop b/c should not be possible
-    same = (df['iso3_dest'] == df['iso3_orig'])
-    return df[~(too_big | same)]
-
-
-def main():
+def main(update_chord_diagram=False):
     df = (
         pd.read_csv(path.join(get_input_dir(), get_latest_data()))
           .pipe(standardize_col_names)
@@ -369,11 +406,13 @@ def main():
        .pipe(drop_bad_rows)
        .pipe(add_metadata)
        .pipe(bin_continuous_vars, ['hdi', 'gdp'])
+       .pipe(final_checks_fixes)
        .pipe(save_output, 'model_input'))
 
     # collapse by HDI, GDP, and "midregion"
-    # for grp_var in ['hdi', 'gdp', 'midreg']:
-    #     save_output(collapse(df, grp_var), f'{grp_var}')
+    if update_chord_diagram:
+        for grp_var in ['hdi', 'gdp', 'midreg']:
+            save_output(collapse(df, grp_var), f'{grp_var}_chord_diagram')
 
 
 if __name__ == "__main__":
