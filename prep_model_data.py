@@ -77,61 +77,67 @@ def prep_country_area():
         }).dropna(subset=['Value']).set_index('Area Code')['Value'].to_dict()
 
 
-def prep_geo():
-    """Prep data on relevant geographic variables from CEPII.
+def _get_iso3(x):
+    """Helper function to get iso3 from iso2."""
+    country_info = countries.get(alpha_2=x)
+    if country_info:
+        iso3 = country_info.alpha_3
+    elif historic_countries.get(alpha_2=x):
+        iso3 = historic_countries.get(alpha_2=x).alpha_3
+    else:
+        # Kosovo is not UN official
+        if x == 'XK':
+            iso3 = 'XKX'
+        print(f"{x} not found")
+    return iso3.lower()
 
-    Includes: distance, contiguity, colonial relationships
+
+def prep_geo():
+    """Prep data on relevant geographic variables.
+
+    One file from CEPII, other from Maciej. Use distance variables from
+    Maciej and others from CEPII.
+
+    CEPII
     dist: Geodesic distances from lat/long of most populous cities
     distcap: geodesic distance between capital cities
     distw: population weighted distance, theta = 1
     distwecs: population weighted distance, theta = -1
     contig: share a border
     comcol, colony, col45, curcol: colonial relationships
+    Maciej
+    dist_pop_weighted: most simliar to 'distwecs' from CEPII
+    dist_biggest_cities, dist_unweighted
     """
-    return pd.read_excel(
+    cepii =  pd.read_excel(
         path.join(get_input_dir(), 'CEPII_distance/dist_cepii.xls'),
-        converters=dict(zip(['iso_o', 'iso_d'], [lambda x: str.lower(x)]*2))
-    ).set_index(['iso_o', 'iso_d'])
-
-
-def _get_iso3(x):
-    """Helper function to get iso3 from iso2."""
-    country_info = countries.get(alpha_2=x)
-    if country_info:
-        return country_info.alpha_3
-    elif historic_countries.get(alpha_2=x):
-        return historic_countries.get(alpha_2=x).alpha_3
-    else:
-        print(f"{x} not found")
-
-
-def prep_geo2():
-    """Prep data on distance from Maciej Danko.
-
-    Includes: origin, dest - origin and destination country names
-    origin.NC, dest.NC - number of cities used to calculate distances (max 50)
-    pop_weighted - population weighted distances
-    average - average distances (no pop weights)
-    biggest_cit - distance between biggest cities
-    """
-    df = pd.read_csv(
-        path.join(get_input_dir(), 'maciej_distance/DISTANCE.csv',
+        converters=dict(zip(['iso_o', 'iso_d'], [lambda x: str.lower(x)]*2)),
+        usecols=['contig', 'colony', 'comcol', 'curcol', 'col45',
+                 'smctry', 'iso_o', 'iso_d'])
+    maciej = pd.read_csv(
+        path.join(get_input_dir(), 'maciej_distance/DISTANCE.csv'),
         keep_default_na=False,
-        # NA iso2 in origin/dest columns is not a null value
-        na_values=dict(zip(['variable', 'src_ref_db', 'values'], ['NA']))
-    ))
-    df = df[
-        (df['variable'] == 'dist_pop_weighted') &
-        (df['src_ref_db'] == 'maps{R}&geosphere{R}')
-    ]
-    # I think this is Micronesia, should be FM TODO check w/ Maciej
-    df[['origin2', 'dest2']] = df[['origin2', 'dest2']].replace('MIC', 'FM')
+        # NA iso2 in origin/dest columns is not a null value, but Namibia
+        na_values=dict(zip(['variable', 'src_ref_db', 'values'], ['NA'])),
+        # fix micronesia, and united kingdom
+        # confirmed by checking geo_distances.csv
+        converters=dict(zip(
+            ['origin2', 'dest2'],
+            # I tried pd.Series.replace(dict), but got TypeError
+            [lambda x: x.replace('MIC', 'FM').replace('UK', 'GB')]))
+    ).query("src_ref_db == 'maps{R}&geosphere{R}'").pivot(
+        index=['origin2', 'dest2'], columns='variable', values='values'
+    ).reset_index()
     # create dictionary of {iso2: iso3}, faster than looping through whole df?
-    iso2s = df['origin2'].unique()
+    iso2s = maciej['origin2'].unique()
     iso2_3 = dict(zip(iso2s, [_get_iso3(x) for x in iso2s]))
-    df[['origin2', 'dest2']] = df[['origin2', 'dest2']].apply(
+    # map iso2 to iso3
+    maciej[['origin2', 'dest2']] = maciej[['origin2', 'dest2']].apply(
         lambda x: x.map(iso2_3))
-    return df.set_index(['origin2', 'dest2'])[['values']]
+    # merge two 'databases' together
+    return maciej.set_index(['origin2', 'dest2']).merge(
+        cepii, how='outer', left_index=True, right_on=['iso_o', 'iso_d']
+        ).set_index(['iso_o', 'iso_d'])
 
 
 def prep_language():
@@ -158,6 +164,7 @@ def prep_internet_usage():
         path.join(
             get_input_dir(),
             'API_IT/API_IT.NET.USER.ZS_DS2_en_csv_v2_1928189.csv'),
+        # 2018 is most recent year with complete data by country
         header=2, usecols=['Country Code', '2018'],
         converters={'Country Code': lambda x: str.lower(x)}
     ).dropna(subset=['2018']).set_index('Country Code')['2018'].to_dict()
