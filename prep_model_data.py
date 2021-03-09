@@ -88,8 +88,16 @@ def _get_iso3(x):
         # Kosovo is not UN official
         if x == 'XK':
             iso3 = 'XKX'
-        print(f"{x} not found")
     return iso3.lower()
+
+
+def check_geo(cepii, maciej):
+    """Check some assumptions."""
+    assert set(cepii['iso_o']) == set(cepii['iso_d'])
+    assert set(maciej['origin2']) == set(maciej['dest2'])
+    diffs = set(cepii['iso_o']) - set(maciej['origin2'])
+    diffs2 = set(maciej['origin2']) - set(cepii['iso_o'])
+    assert len(diffs) < len(diffs2)
 
 
 def prep_geo():
@@ -102,43 +110,44 @@ def prep_geo():
     dist: Geodesic distances from lat/long of most populous cities
     distcap: geodesic distance between capital cities
     distw: population weighted distance, theta = 1
-    distwecs: population weighted distance, theta = -1
+    distwces: population weighted distance, theta = -1
     contig: share a border
     comcol, colony, col45, curcol: colonial relationships
     Maciej
-    dist_pop_weighted: most simliar to 'distwecs' from CEPII
+    dist_pop_weighted: most simliar to 'distwces' from CEPII
     dist_biggest_cities, dist_unweighted
     """
     cepii =  pd.read_excel(
         path.join(get_input_dir(), 'CEPII_distance/dist_cepii.xls'),
-        converters=dict(zip(['iso_o', 'iso_d'], [lambda x: str.lower(x)]*2)),
-        usecols=['contig', 'colony', 'comcol', 'curcol', 'col45',
-                 'smctry', 'iso_o', 'iso_d'])
+        converters=dict(zip(['iso_o', 'iso_d'], [lambda x: str.lower(x)]*2)))
     maciej = pd.read_csv(
         path.join(get_input_dir(), 'maciej_distance/DISTANCE.csv'),
         keep_default_na=False,
         # NA iso2 in origin/dest columns is not a null value, but Namibia
-        na_values=dict(zip(['variable', 'src_ref_db', 'values'], ['NA'])),
-        # fix micronesia, and united kingdom
-        # confirmed by checking geo_distances.csv
-        converters=dict(zip(
-            ['origin2', 'dest2'],
-            # I tried pd.Series.replace(dict), but got TypeError
-            [lambda x: x.replace('MIC', 'FM').replace('UK', 'GB')]))
+        na_values=dict(zip(['variable', 'src_ref_db', 'values'], ['NA']))
     ).query("src_ref_db == 'maps{R}&geosphere{R}'").pivot(
         index=['origin2', 'dest2'], columns='variable', values='values'
-    ).reset_index()
+    # fix micronesia, and united kingdom
+    # confirmed by checking geo_distances.csv
+    ).reset_index().replace({'MIC': 'FM', 'UK': 'GB'})
     # create dictionary of {iso2: iso3}, faster than looping through whole df?
     iso2s = maciej['origin2'].unique()
     iso2_3 = dict(zip(iso2s, [_get_iso3(x) for x in iso2s]))
     # map iso2 to iso3
     maciej[['origin2', 'dest2']] = maciej[['origin2', 'dest2']].apply(
         lambda x: x.map(iso2_3))
+    # some checks
+    check_geo(cepii,  maciej)
     # merge two 'databases' together
-    return maciej.set_index(['origin2', 'dest2']).merge(
-        cepii, how='outer', left_index=True, right_on=['iso_o', 'iso_d']
-        ).set_index(['iso_o', 'iso_d'])
-
+    geo_df = maciej.set_index(['origin2', 'dest2']).merge(
+        cepii, how='outer', left_index=True, right_on=['iso_o', 'iso_d'])
+    # quick fix TODO check w/ Maciej or recalculate w/ latlong from cepii
+    return geo_df.fillna(
+        {'dist_pop_weighted': geo_df['distwces'],
+         'dist_biggest_cities': geo_df['distwces'],
+         'dist_unweighted': geo_df['dist']}
+    ).drop(['comlang_off', 'dist', 'distcap', 'distw', 'distwces'], axis=1
+    ).set_index(['iso_o', 'iso_d'])
 
 def prep_language():
     """Prep data on language overlap & proximity from CEPII.
