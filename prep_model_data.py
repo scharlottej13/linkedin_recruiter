@@ -157,13 +157,24 @@ def prep_language():
 
     Paper clearly defines: col, csl, cnl, lp1, lp2. Not sure
     about the other columns.
+    lp1: 4 possibilities, 2 languages belonging to:
+    0: separate family trees
+    0.25: different branches of same tree (English and French),
+    0.50: the same branch (English and German),
+    0.75: the same sub-branch (German and Dutch)
+    lp2: continuous scale from 0-100
     """
+    lp1_codebook = {
+        0: 'diff_tree', 0.25: 'same_tree',
+        0.50: 'same_branch', 0.75: 'same_sub-branch'
+    } 
     return pd.read_stata(
         path.join(get_input_dir(), 'CEPII_language/CEPII_language.dta'),
         columns=['iso_o', 'iso_d', 'col', 'csl', 'cnl', 'lp1', 'lp2']
     ).assign(iso_o=lambda x: x['iso_o'].str.lower(),
-             iso_d=lambda x: x['iso_d'].str.lower()).set_index(
-                 ['iso_o', 'iso_d'])
+             iso_d=lambda x: x['iso_d'].str.lower(),
+             lp1=lambda x: x['lp1'].map(lp1_codebook)
+    ).set_index(['iso_o', 'iso_d'])
 
 
 def prep_internet_usage():
