@@ -378,15 +378,49 @@ def fill_missing_borders(df):
     return df.drop('neighbor', axis=1)
 
 
-def final_checks_fixes(df):
+def final_checks_fixes(
+        df, id_cols=['country_orig', 'country_dest', 'query_date'],
+        value_col='flow'
+    ):
     """Checks and possible fixes before saving."""
-    df = fill_missing_borders(df)
-    id_cols = ['iso3_orig', 'iso3_dest', 'query_date']
-    check_cols = ['country_orig', 'country_dest', 'flow', 'query_date']
-    dups = df[df[id_cols].duplicated()][check_cols]
-    assert len(dups) == 0, \
-        f"Found duplicates across {id_cols}\n {dups.head()}"
+    # df = fill_missing_borders(df)
+    # is this how a test would work?
+    test_no_duplicates()
+    if no_duplicates(df, id_cols, value_col, verbose=True):
+        df = df.drop_duplicates(subset=id_cols, ignore_index=True)
+    return df
+    
 
+def no_duplicates(df, id_cols, value_col, verbose=False):
+    check_cols = id_cols + [value_col]
+    dups = df[df[id_cols].duplicated(keep=False)][check_cols]
+    if len(dups) > 0:
+        # try to fix duplicates
+        # variance should be 0 if all values of value_col are the same
+        var = dups.groupby(id_cols)[value_col].var()
+        if (var == 0).values.all():
+            return True
+        else:
+            if verbose:
+                print(f"Flow values differ, check it!:\n {var[var != 0]}")
+            return False
+    else:
+        return True
+
+
+def test_no_duplicates():
+    id_cols = ['a', 'b']
+    value_col = 'c'
+    df = pd.DataFrame(
+        {'a': ['x', 'x', 'r', 'r'], 'b': ['y', 'y', 'p', 'p'],
+         'c': [1, 1, 1, 2]}
+    )
+    # this should return False
+    assert not no_duplicates(df, id_cols, value_col)
+    df.at[3, 'c'] = 1
+    # and this should return True
+    assert no_duplicates(df, id_cols, value_col)
+    
 
 def collapse(df, var, id_cols=None, value_col='flow'):
     if id_cols is None:
