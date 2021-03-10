@@ -3,7 +3,6 @@
 import datetime
 from collections import defaultdict
 from os import listdir, path, pipe, mkdir
-import re
 
 import numpy as np
 import pandas as pd
@@ -79,15 +78,17 @@ def prep_country_area():
 
 def _get_iso3(x):
     """Helper function to get iso3 from iso2."""
+    iso3 = None
     country_info = countries.get(alpha_2=x)
     if country_info:
         iso3 = country_info.alpha_3
     elif historic_countries.get(alpha_2=x):
         iso3 = historic_countries.get(alpha_2=x).alpha_3
+    # Kosovo is not UN official
+    elif x == 'XK':
+        iso3 = 'XKX'
     else:
-        # Kosovo is not UN official
-        if x == 'XK':
-            iso3 = 'XKX'
+        print(f"Could not find iso3 for {x}")
     return iso3.lower()
 
 
@@ -383,6 +384,7 @@ def data_validation(
         value_col='flow'
     ):
     """Checks and possible fixes before saving."""
+    # TODO check for null values and try to fill them in
     # df = fill_missing_borders(df)
     test_no_duplicates()
     if no_duplicates(df, id_cols, value_col, verbose=True):
