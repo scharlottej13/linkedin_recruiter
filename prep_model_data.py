@@ -311,8 +311,9 @@ def drop_bad_rows(df):
     )
     # few of these, drop b/c should not be possible
     same = (df['iso3_dest'] == df['iso3_orig'])
-    # TODO check w/ Tom, I think these collection dates can be combined
-    combine_dates = {'2021-01-15': '2021-01-12', '2021-02-11': '2021-02-23'}
+    # collection dates should be ~ 2 weeks apart, anything closer due
+    # to timeout interruption TODO could automate this
+    combine_dates = {'2021-01-15': '2021-01-12', '2021-02-11': '2021-02-08'}
     return df[~(too_big | same)].replace(combine_dates)
 
 
