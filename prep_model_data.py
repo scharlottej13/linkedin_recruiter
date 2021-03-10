@@ -281,7 +281,7 @@ def get_net_migration(df, value_col='flow', add_cols=['query_date']):
         net_rate_100=lambda x: (x['net_flow'] / x['users_orig']) * 100)
 
 
-def data_validation(df, diff_col='query_date'):
+def get_percent_change(df, diff_col='query_date'):
     # check percent difference between the two dates of data collection
     value_cols = ['flow', 'users_orig', 'users_dest']
     id_cols = ['iso3_dest', 'iso3_orig']
@@ -433,8 +433,8 @@ def main(update_chord_diagram=False):
         pd.read_csv(path.join(get_input_dir(), get_latest_data()))
           .pipe(standardize_col_names)
     )
-    # does fun stuff like pct change, std., identify new country pairs, etc.
-    save_output(data_validation(df), 'rolling_pct_change')
+    # see changes across data collection dates
+    save_output(get_percent_change(df), 'rolling_pct_change')
 
     (df.pipe(merge_region_subregion)
        .pipe(drop_bad_rows)
