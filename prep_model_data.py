@@ -164,16 +164,11 @@ def prep_language():
     0.75: the same sub-branch (German and Dutch)
     lp2: continuous scale from 0-100
     """
-    lp1_codebook = {
-        0: 'diff_tree', 0.25: 'same_tree',
-        0.50: 'same_branch', 0.75: 'same_sub-branch'
-    } 
     return pd.read_stata(
         path.join(get_input_dir(), 'CEPII_language/CEPII_language.dta'),
         columns=['iso_o', 'iso_d', 'col', 'csl', 'cnl', 'lp1', 'lp2']
     ).assign(iso_o=lambda x: x['iso_o'].str.lower(),
-             iso_d=lambda x: x['iso_d'].str.lower(),
-             lp1=lambda x: x['lp1'].map(lp1_codebook)
+             iso_d=lambda x: x['iso_d'].str.lower()
     ).set_index(['iso_o', 'iso_d'])
 
 
