@@ -378,16 +378,16 @@ def fill_missing_borders(df):
     return df.drop('neighbor', axis=1)
 
 
-def final_checks_fixes(
+def data_validation(
         df, id_cols=['country_orig', 'country_dest', 'query_date'],
         value_col='flow'
     ):
     """Checks and possible fixes before saving."""
     # df = fill_missing_borders(df)
-    # is this how a test would work?
     test_no_duplicates()
     if no_duplicates(df, id_cols, value_col, verbose=True):
         df = df.drop_duplicates(subset=id_cols, ignore_index=True)
+    assert df[value_col].dtype == int
     return df
     
 
@@ -440,7 +440,7 @@ def main(update_chord_diagram=False):
        .pipe(drop_bad_rows)
        .pipe(add_metadata)
        .pipe(bin_continuous_vars, ['hdi', 'gdp'])
-       .pipe(final_checks_fixes)
+       .pipe(data_validation)
        .pipe(save_output, 'model_input'))
 
     # collapse by HDI, GDP, and "midregion"
