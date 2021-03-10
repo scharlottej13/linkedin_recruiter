@@ -311,7 +311,9 @@ def drop_bad_rows(df):
     )
     # few of these, drop b/c should not be possible
     same = (df['iso3_dest'] == df['iso3_orig'])
-    return df[~(too_big | same)]
+    # TODO check w/ Tom, I think these collection dates can be combined
+    combine_dates = {'2021-01-15': '2021-01-12', '2021-02-11': '2021-02-23'}
+    return df[~(too_big | same)].replace(combine_dates)
 
 
 def add_metadata(df):
