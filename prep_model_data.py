@@ -78,18 +78,21 @@ def prep_country_area():
 
 def _get_iso3(x):
     """Helper function to get iso3 from iso2."""
-    iso3 = None
-    country_info = countries.get(alpha_2=x)
-    if country_info:
-        iso3 = country_info.alpha_3
-    elif historic_countries.get(alpha_2=x):
-        iso3 = historic_countries.get(alpha_2=x).alpha_3
-    # Kosovo is not UN official
-    elif x == 'XK':
-        iso3 = 'XKX'
+    if x:
+        country_info = countries.get(alpha_2=x)
+        if country_info:
+            iso3 = country_info.alpha_3
+        elif historic_countries.get(alpha_2=x):
+            iso3 = historic_countries.get(alpha_2=x).alpha_3
+        # Kosovo is not UN official
+        elif x == 'XK':
+            iso3 = 'XKX'
+        else:
+            KeyError, f'iso3 for {x} not found'
+        return iso3.lower()
+    # sometimes x is Null to begin with, this f'n doesn't need to care
     else:
-        print(f"Could not find iso3 for {x}")
-    return iso3.lower()
+        return x
 
 
 def check_geo(cepii, maciej):
@@ -381,12 +384,13 @@ def fill_missing_borders(df):
     borderless = borders.loc[borders['iso3_dest'].isnull(), 'iso3_orig'].unique()
     df = df.merge(borders, how='left', indicator='neighbor')
     df.loc[
-        (df['contig'].isnull() & df['neighbor'] == 'both'), 'contig'
+        (df['contig'].isnull()) & (df['neighbor'] == 'both'), 'contig'
     ] = 1
-    df.loc[(
-        df['contig'].isnull() &
-        (df['iso3_orig'].isin(borderless) | df['iso3_dest'].isin(borderless))
-    ), 'contig'] = 0
+    df.loc[
+        (df['contig'].isnull()) &
+        (df['iso3_orig'].isin(borderless) | df['iso3_dest'].isin(borderless)),
+    'contig'] = 0
+    # TODO see if it's possible to fill in more missing values
     return df.drop('neighbor', axis=1)
 
 
@@ -408,7 +412,7 @@ def data_validation(
     ):
     """Checks and fixes before saving."""
     # TODO check for null values and try to fill them in
-    # df = fill_missing_borders(df)
+    df = fill_missing_borders(df)
     df = fix_query_date(df)
     test_no_duplicates()
     if no_duplicates(df, id_cols, value_col, verbose=True):
