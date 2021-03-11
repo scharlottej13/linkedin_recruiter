@@ -1,6 +1,6 @@
 """Prep dyadic LinkedIn Recruiter data for all countries."""
 
-import datetime
+from datetime import datetime
 from collections import defaultdict
 from os import listdir, path, pipe, mkdir
 
@@ -42,7 +42,7 @@ def get_latest_data():
 
 def save_output(df, filename):
     """Auto archive output saving."""
-    today = datetime.datetime.now().date()
+    today = datetime.now().date()
     active_dir = get_input_dir()
     archive_dir = path.join(active_dir, '_archive')
     if not path.exists(archive_dir):
@@ -155,18 +155,23 @@ def prep_geo():
 def prep_language():
     """Prep data on language overlap & proximity from CEPII.
 
-    Paper clearly defines: col, csl, cnl, lp1, lp2. Not sure
-    about the other columns.
-    lp1: 4 possibilities, 2 languages belonging to:
-    0: separate family trees
-    0.25: different branches of same tree (English and French),
-    0.50: the same branch (English and German),
-    0.75: the same sub-branch (German and Dutch)
-    lp2: continuous scale from 0-100
+    col: common official language (0 or 1); 19 languages considered
+    csl: p(two random people understand a common language); >= cnl
+    cnl: p(two random people share a native language)
+    lp: lexical closeness of native langauges; set to 0 when cnl is 1 or 0
+    also set to 0 if there is no dominant native language (e.g. India)
+    lp1: tree based. 4 possibilities, 2 languages belonging to:
+        0: separate family trees
+        0.25: different branches of same tree (English and French),
+        0.50: the same branch (English and German),
+        0.75: the same sub-branch (German and Dutch)
+    lp2: lexical similarity of 200 words, continuous scale 0-100
+    normalized lp1, lp2 so coefficients are comparable to eachother and COL
+    prox1 and prox2 are unadjusted versions of lp1 and lp2?
     """
     return pd.read_stata(
         path.join(get_input_dir(), 'CEPII_language/CEPII_language.dta'),
-        columns=['iso_o', 'iso_d', 'col', 'csl', 'cnl', 'lp1', 'lp2']
+        columns=['iso_o', 'iso_d', 'col', 'csl', 'cnl', 'prox1', 'prox2']
     ).assign(iso_o=lambda x: x['iso_o'].str.lower(),
              iso_d=lambda x: x['iso_d'].str.lower()
     ).set_index(['iso_o', 'iso_d'])
@@ -317,10 +322,7 @@ def drop_bad_rows(df):
     )
     # few of these, drop b/c should not be possible
     same = (df['iso3_dest'] == df['iso3_orig'])
-    # collection dates should be ~ 2 weeks apart, anything closer due
-    # to timeout interruption TODO could automate this
-    combine_dates = {'2021-01-15': '2021-01-12', '2021-02-11': '2021-02-08'}
-    return df[~(too_big | same)].replace(combine_dates)
+    return df[~(too_big | same)]
 
 
 def add_metadata(df):
@@ -388,13 +390,26 @@ def fill_missing_borders(df):
     return df.drop('neighbor', axis=1)
 
 
+def fix_query_date(df, cutoff=np.timedelta64(10, 'D')):
+    """Adjust date of collection for probable timeout errors from LinkedIn."""
+    date_fmt = '%Y-%m-%d'
+    dates = sorted(
+        [datetime.strptime(x, date_fmt) for x in df['query_date'].unique()]
+    )
+    combine_dates = {
+        dates[n+1].strftime(date_fmt): dates[n].strftime(date_fmt)
+        for n in range(0, len(dates) - 1) if dates[n+1] - dates[n] < cutoff}
+    return df.replace(combine_dates)
+
+
 def data_validation(
         df, id_cols=['country_orig', 'country_dest', 'query_date'],
         value_col='flow'
     ):
-    """Checks and possible fixes before saving."""
+    """Checks and fixes before saving."""
     # TODO check for null values and try to fill them in
     # df = fill_missing_borders(df)
+    df = fix_query_date(df)
     test_no_duplicates()
     if no_duplicates(df, id_cols, value_col, verbose=True):
         df = df.drop_duplicates(subset=id_cols, ignore_index=True)
