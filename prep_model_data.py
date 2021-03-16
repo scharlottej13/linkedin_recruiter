@@ -69,11 +69,11 @@ def prep_country_area():
     http://www.fao.org/faostat/en/#data/RL
     """
     return pd.read_csv(
-        path.join(get_input_dir(), 'FAO/FAOSTAT_data_2-1-2021.csv'),
-        converters={
-            'Area Code': lambda x: str.lower(x),
-            'Value': lambda x: x * 10
-        }).dropna(subset=['Value']).set_index('Area Code')['Value'].to_dict()
+        path.join(get_input_dir(), 'FAO/FAOSTAT_data_2-1-2021.csv')
+    ).dropna(subset=['Value']).assign(
+        value=lambda x: x['Value'] * 10,
+        iso3=lambda x: x['Area Code'].str.lower()
+    ).set_index('iso3')['value'].to_dict()
 
 
 def _get_iso3(x):
@@ -414,6 +414,9 @@ def data_validation(
     # TODO check for null values and try to fill them in
     df = fill_missing_borders(df)
     df = fix_query_date(df)
+    # make sure country areas are reasonable
+    biggest_area = 17098250
+    assert (df[['area_dest', 'area_orig']] <= biggest_area).values.all()
     test_no_duplicates()
     if no_duplicates(df, id_cols, value_col, verbose=True):
         df = df.drop_duplicates(subset=id_cols, ignore_index=True)
