@@ -414,6 +414,7 @@ def data_validation(
     # TODO check for null values and try to fill them in
     df = fill_missing_borders(df)
     df = fix_query_date(df)
+    # TODO add function for checking numeric vs. categorical variables
     # make sure country areas are reasonable
     biggest_area = 17098250
     assert (df[['area_dest', 'area_orig']] <= biggest_area).values.all()
