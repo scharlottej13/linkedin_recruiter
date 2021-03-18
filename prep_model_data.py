@@ -9,6 +9,11 @@ import pandas as pd
 from pycountry import countries, historic_countries
 
 
+#TODO it'd be nice to have a helper function for interactive data exploration
+# that dropped the complements when you don't need to see them
+# eg seeing A -> B and B -> A not necessary
+
+
 def _get_working_dir(custom_dir):
     pc = "N:/johnson/linkedin_recruiter"
     mac = "/Users/scharlottej13/Nextcloud/linkedin_recruiter"
@@ -112,14 +117,18 @@ def prep_geo():
     distcap: geodesic distance between capital cities
     distw: population weighted distance, theta = 1
     distwces: population weighted distance, theta = -1
-    contig: share a border
-    comcol, colony, col45, curcol: colonial relationships
+    contig: share a land border
+    comcol: share common colonizer post 1945
+    colony: have ever had a colonial link
+    col45: share common colonizer pre 1945
+    curcol: currently in a colonial relationship
 
     Maciej
-    dist_pop_weighted: average bilateral population-weighted distance
-    dist_biggest_cities: average bilateral population-weighted distance
-    ^ most similar distwces TODO double check w/ Maciej how these differ
-    dist_unweighted: average bilateral distance TODO capital cities?
+    dist_pop_weighted: population-weighted average distance between
+    biggest cities
+    dist_biggest_cities: average distance between biggest cities
+    ^ most similar to distwces
+    dist_unweighted: average distance between (?) (not population weighted)
     """
     cepii =  pd.read_excel(
         path.join(get_input_dir(), 'CEPII_distance/dist_cepii.xls'),
