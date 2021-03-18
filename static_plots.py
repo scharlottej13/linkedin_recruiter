@@ -10,7 +10,7 @@ import statsmodels.stats.api as sms
 
 
 def get_output_dir(custom_dir=None):
-    return path.join(_get_working_dir(custom_dir), 'outputs')
+    return path.join(_get_working_dir(custom_dir), 'plots')
 
 
 def get_log_cols(continuous_cols):
