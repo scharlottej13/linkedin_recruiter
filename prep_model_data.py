@@ -269,28 +269,39 @@ def bin_continuous_vars(df, cont_vars: list, q: int = 5):
     return df
 
 
+def _get_reciprocal_pairs(df, id_cols, within_col=None):
+    # use list of tuples [(date, orig, dest)] b/c quick to loop over &
+    # easily make a dataframe from it again
+    # another way to think about this is masking w/ matrices
+    if within_col:
+        id_cols.extend([within_col])
+    data_pairs = df[id_cols].to_records(index=False).to_list()
+    if within_col:
+        [(x, dest, orig) for x, orig, dest in data_pairs]
+    else:
+        reciprocal_pairs = [(dest, orig) for orig, dest in data_pairs]
+    keep_pairs = list(set(data_pairs) & set(reciprocal_pairs))
+    return pd.DataFrame.from_records(keep_pairs, columns=id_cols
+
+
 def flag_reciprocals(df):
-    """Add column flagging reciprocal origin, destination pairs.
+    """Add columns flagging reciprocal origin, destination pairs.
 
     We know that not all countries of origin are represented in these data,
     since LinkedIn only shows us the top 75 origin locations per desired
     destination, by number of users. Return dataframe with added columns
-    flagging reciprocal pairs within date of collection.
-
-    #TODO it'd be good if there were also a column denoting reciprocal
-    pairs across all collection dates, but have to think about how to do this
+    flagging reciprocal pairs within date of collection (by_date_recip)
+    and across all dates (recip).
     """
-    id_cols = ['query_date', 'country_orig', 'country_dest']
-    # use list of tuples [(date, orig, dest)] b/c quick to loop over &
-    # easily make a dataframe from it again at the end
-    data_pairs = df[id_cols].to_records(index=False).tolist()
-    reciprocal_pairs = [(date, dest, orig) for date, orig, dest in data_pairs]
-    # TODO good place for a test?
-    keep_pairs = list(set(data_pairs) & set(reciprocal_pairs))
-    return df.merge(
-        pd.DataFrame.from_records(keep_pairs, columns=id_cols),
-        how='left', indicator='comp'
-    ).assign(comp=lambda x: x['comp'].map({'left_only': 0, 'both': 1}))
+    id_cols = ['country_orig', 'country_dest']
+    across_date_df = _get_reciprocal_pairs(df, id_cols)
+    within_date_df = _get_reciprocal_pairs(df, id_cols, 'query_date')
+    merge_map={'left_only': 0, 'both': 1}
+    return df.merge(across_date_df, how='left', indicator='recip'
+    ).merge(within_date_df, how='left', indicator='by_date_recip').assign(
+        recip=lambda x: x['recip'].map(merge_map),
+        by_date_recip=lambda x: x['by_date_recip'].map(merge_map)
+    )
 
 
 def get_net_migration(df, value_col='flow', add_cols=['query_date']):
@@ -373,7 +384,6 @@ def add_metadata(df):
     }
     return (
         df.merge(prep_geo(), **kwargs).merge(prep_language(), **kwargs)
-        .pipe(flag_reciprocals)
         .pipe(get_net_migration)
     )
 
@@ -485,6 +495,8 @@ def main(update_chord_diagram=False):
        .pipe(add_metadata)
        .pipe(bin_continuous_vars, ['hdi', 'gdp'])
        .pipe(data_validation)
+       # this has to happen last!
+       .pipe(flag_reciprocals)
        .pipe(save_output, 'model_input'))
 
     # collapse by HDI, GDP, and "midregion"
