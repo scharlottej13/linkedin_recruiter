@@ -10,7 +10,7 @@ from pycountry import countries, historic_countries
 
 
 #TODO it'd be nice to have a helper function for interactive data exploration
-# that dropped the complements when you don't need to see them
+# that dropped the reciprocal pairs when you don't need to see them
 # eg seeing A -> B and B -> A not necessary
 
 
@@ -275,13 +275,13 @@ def _get_reciprocal_pairs(df, id_cols, within_col=None):
     # another way to think about this is masking w/ matrices
     if within_col:
         id_cols.extend([within_col])
-    data_pairs = df[id_cols].to_records(index=False).to_list()
+    data_pairs = df[id_cols].to_records(index=False).tolist()
     if within_col:
-        [(x, dest, orig) for x, orig, dest in data_pairs]
+        reciprocal_pairs = [(x, dest, orig) for x, orig, dest in data_pairs]
     else:
         reciprocal_pairs = [(dest, orig) for orig, dest in data_pairs]
     keep_pairs = list(set(data_pairs) & set(reciprocal_pairs))
-    return pd.DataFrame.from_records(keep_pairs, columns=id_cols
+    return pd.DataFrame.from_records(keep_pairs, columns=id_cols)
 
 
 def flag_reciprocals(df):
@@ -304,17 +304,17 @@ def flag_reciprocals(df):
     )
 
 
-def get_net_migration(df, value_col='flow', add_cols=['query_date']):
-    orig_cols = ['iso3_orig'] + add_cols
-    dest_cols = ['iso3_dest'] + add_cols
-    has_comp = (df['comp'] == 1)
-    return df.assign(
-        # immigrants - emigrants
-        net_flow=lambda x:
-        x[has_comp].groupby(dest_cols)[value_col].transform(sum) -
-        x[has_comp].groupby(orig_cols)[value_col].transform(sum),
-        # use 100 to compare w/ GWP
-        net_rate_100=lambda x: (x['net_flow'] / x['users_orig']) * 100)
+#TODO turn this into a util f'n
+# def get_net_migration(df, value_col='flow', add_cols=['query_date']):
+#     orig_cols = ['iso3_orig'] + add_cols
+#     dest_cols = ['iso3_dest'] + add_cols
+#     return df.assign(
+#         # immigrants - emigrants
+#         net_flow=lambda x:
+#         x.groupby(dest_cols)[value_col].transform(sum) -
+#         x.groupby(orig_cols)[value_col].transform(sum),
+#         # use 100 to compare w/ GWP
+#         net_rate_100=lambda x: (x['net_flow'] / x['users_orig']) * 100)
 
 
 def get_percent_change(df, diff_col='query_date'):
@@ -366,6 +366,8 @@ def add_metadata(df):
                 df[f'{k}_{x}'] = df[f'iso3_{x}'].map(v)
             else:
                 df[f'{k}_{x}'] = df[f'users_{x}'] / df[f'pop_{x}']
+    # TODO fix this EU f'n-- I don't actually want separate _orig and _dest
+    # eu columns, but instead one column that says if both pairs are EU
     eu = prep_eu_states()
     new_eu_cols = [f'{x}_{y}' for x in eu.columns for y in ['orig', 'dest']]
     df = df.merge(
@@ -382,10 +384,7 @@ def add_metadata(df):
         'how': 'left', 'left_on': ['iso3_orig', 'iso3_dest'],
         'right_index': True
     }
-    return (
-        df.merge(prep_geo(), **kwargs).merge(prep_language(), **kwargs)
-        .pipe(get_net_migration)
-    )
+    return df.merge(prep_geo(), **kwargs).merge(prep_language(), **kwargs)
 
 
 def fill_missing_borders(df):
