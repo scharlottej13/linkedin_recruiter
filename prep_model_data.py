@@ -269,23 +269,24 @@ def bin_continuous_vars(df, cont_vars: list, q: int = 5):
     return df
 
 
-def flag_complements(df):
-    """Create dataframe of only complementary origin, destination pairs.
+def flag_reciprocals(df):
+    """Add column flagging reciprocal origin, destination pairs.
 
     We know that not all countries of origin are represented in these data,
     since LinkedIn only shows us the top 75 origin locations per desired
-    destination, by number of users. Return dataframe of only complement pairs.
+    destination, by number of users. Return dataframe with added columns
+    flagging reciprocal pairs within date of collection.
 
-    NOTE: Should this be within query_date or across all query_dates?
-    I think this depends, but for now make it within
+    #TODO it'd be good if there were also a column denoting reciprocal
+    pairs across all collection dates, but have to think about how to do this
     """
     id_cols = ['query_date', 'country_orig', 'country_dest']
     # use list of tuples [(date, orig, dest)] b/c quick to loop over &
     # easily make a dataframe from it again at the end
     data_pairs = df[id_cols].to_records(index=False).tolist()
-    complements = [(date, dest, orig) for date, orig, dest in data_pairs]
+    reciprocal_pairs = [(date, dest, orig) for date, orig, dest in data_pairs]
     # TODO good place for a test?
-    keep_pairs = list(set(data_pairs) & set(complements))
+    keep_pairs = list(set(data_pairs) & set(reciprocal_pairs))
     return df.merge(
         pd.DataFrame.from_records(keep_pairs, columns=id_cols),
         how='left', indicator='comp'
@@ -372,7 +373,7 @@ def add_metadata(df):
     }
     return (
         df.merge(prep_geo(), **kwargs).merge(prep_language(), **kwargs)
-        .pipe(flag_complements)
+        .pipe(flag_reciprocals)
         .pipe(get_net_migration)
     )
 
