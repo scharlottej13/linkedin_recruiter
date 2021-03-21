@@ -295,26 +295,25 @@ def flag_reciprocals(df):
     """
     id_cols = ['country_orig', 'country_dest']
     across_date_df = _get_reciprocal_pairs(df, id_cols)
-    within_date_df = _get_reciprocal_pairs(df, id_cols, 'query_date')
+    by_date_df = _get_reciprocal_pairs(df, id_cols, 'query_date')
     merge_map={'left_only': 0, 'both': 1}
-    return df.merge(across_date_df, how='left', indicator='recip'
-    ).merge(within_date_df, how='left', indicator='by_date_recip').assign(
-        recip=lambda x: x['recip'].map(merge_map),
-        by_date_recip=lambda x: x['by_date_recip'].map(merge_map)
-    )
+    return df.merge(
+        across_date_df, how='left', indicator='recip'
+        ).merge(by_date_df, how='left', indicator='by_date_recip'
+        ).assign(recip=lambda x: x['recip'].map(merge_map),
+                 by_date_recip=lambda x: x['by_date_recip'].map(merge_map))
 
 
-#TODO turn this into a util f'n
-# def get_net_migration(df, value_col='flow', add_cols=['query_date']):
-#     orig_cols = ['iso3_orig'] + add_cols
-#     dest_cols = ['iso3_dest'] + add_cols
-#     return df.assign(
-#         # immigrants - emigrants
-#         net_flow=lambda x:
-#         x.groupby(dest_cols)[value_col].transform(sum) -
-#         x.groupby(orig_cols)[value_col].transform(sum),
-#         # use 100 to compare w/ GWP
-#         net_rate_100=lambda x: (x['net_flow'] / x['users_orig']) * 100)
+def get_net_migration(df, value_col='flow', add_cols=['query_date']):
+    orig_cols = ['iso3_orig'] + add_cols
+    dest_cols = ['iso3_dest'] + add_cols
+    return df.assign(
+        # immigrants - emigrants
+        net_flow=lambda x:
+        x.groupby(dest_cols)[value_col].transform(sum) -
+        x.groupby(orig_cols)[value_col].transform(sum),
+        # use 100 to compare w/ GWP
+        net_rate_100=lambda x: (x['net_flow'] / x['users_orig']) * 100)
 
 
 def get_percent_change(df, diff_col='query_date'):
@@ -366,20 +365,16 @@ def add_metadata(df):
                 df[f'{k}_{x}'] = df[f'iso3_{x}'].map(v)
             else:
                 df[f'{k}_{x}'] = df[f'users_{x}'] / df[f'pop_{x}']
-    # TODO fix this EU f'n-- I don't actually want separate _orig and _dest
-    # eu columns, but instead one column that says if both pairs are EU
-    eu = prep_eu_states()
-    new_eu_cols = [f'{x}_{y}' for x in eu.columns for y in ['orig', 'dest']]
-    df = df.merge(
-        eu, how='left', right_index=True, left_on='iso3_orig'
-    ).merge(
-        eu, how='left', right_index=True, left_on='iso3_dest',
-        suffixes=('_orig', '_dest')
-    # fill unmerged rows w/ 0 for columns added from 'eu'
-    ).fillna(dict(zip(new_eu_cols, [0] * len(new_eu_cols)))
-    # fix sneaky floats created from previous NAs
-    ).astype(dict(zip(new_eu_cols, [int] * len(new_eu_cols))))
     # (2) one new column, based on origin/destination pair
+    # columns flagging EU, Schengen, EEA membership
+    eu = prep_eu_states()
+    for col in eu.columns:
+        iso3_codes = eu[eu[col] == 1].index.values
+        df[col] = df.apply(
+            lambda x: 1 if (x['iso3_orig'] in iso3_codes) &
+            (x['iso3_dest'] in iso3_codes) else 0,
+        axis=1)
+    # columns for distance, language proximity
     kwargs = {
         'how': 'left', 'left_on': ['iso3_orig', 'iso3_dest'],
         'right_index': True
@@ -489,15 +484,21 @@ def main(update_chord_diagram=False):
     # see changes across data collection dates
     save_output(get_percent_change(df), 'rolling_pct_change')
 
-    (df.pipe(merge_region_subregion)
+    df = (df.pipe(merge_region_subregion)
        .pipe(drop_bad_rows)
        .pipe(add_metadata)
        .pipe(bin_continuous_vars, ['hdi', 'gdp'])
        .pipe(data_validation)
        # this has to happen last!
-       .pipe(flag_reciprocals)
-       .pipe(save_output, 'model_input'))
+       .pipe(flag_reciprocals))
 
+    # save separate outputs
+    # I may hate this idea and change it later
+    for col in ['recip', 'by_date_recip']:
+        (df[df[col] == 1]
+        .pipe(get_net_migration).pipe(save_output, f'model_input_{col}_pairs'))
+
+    # TODO if you run this bit again then decide which df should be used
     # collapse by HDI, GDP, and "midregion"
     if update_chord_diagram:
         for grp_var in ['hdi', 'gdp', 'midreg']:
