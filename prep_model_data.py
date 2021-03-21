@@ -277,7 +277,7 @@ def _get_reciprocal_pairs(df, id_cols, within_col=None):
         id_cols.extend([within_col])
     data_pairs = df[id_cols].to_records(index=False).tolist()
     if within_col:
-        reciprocal_pairs = [(x, dest, orig) for x, orig, dest in data_pairs]
+        reciprocal_pairs = [(dest, orig, x) for orig, dest, x in data_pairs]
     else:
         reciprocal_pairs = [(dest, orig) for orig, dest in data_pairs]
     keep_pairs = list(set(data_pairs) & set(reciprocal_pairs))
@@ -296,6 +296,8 @@ def flag_reciprocals(df):
     id_cols = ['country_orig', 'country_dest']
     across_date_df = _get_reciprocal_pairs(df, id_cols)
     by_date_df = _get_reciprocal_pairs(df, id_cols, 'query_date')
+    # quick check, should be more pairs kept for 'by_date'
+    assert len(by_date_df) > len(across_date_df)
     merge_map={'left_only': 0, 'both': 1}
     return df.merge(
         across_date_df, how='left', indicator='recip'
