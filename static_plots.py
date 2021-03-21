@@ -2,15 +2,18 @@ import pandas as pd
 import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
-from os import path
+from os import path, mkdir
 from matplotlib.patches import Rectangle
 from prep_model_data import get_input_dir, _get_working_dir
 from scipy import stats
 import statsmodels.stats.api as sms
 
 
-def get_output_dir(custom_dir=None):
-    return path.join(_get_working_dir(custom_dir), 'plots')
+def get_output_dir(custom_dir=None, sub_dir=None):
+    outdir = path.join(_get_working_dir(custom_dir), 'plots', sub_dir)
+    if not path.exists(outdir):
+        mkdir(outdir)
+    return outdir
 
 
 def get_log_cols(continuous_cols):
@@ -39,39 +42,48 @@ def ttest(df, grp_var, date='2020-10-08'):
 
 
 def annotate(data, **kws):
-    n = len(data)
     ax = plt.gca()
-    ax.text(.1, .6, f"N = {n}", transform=ax.transAxes)
+    ax.text(.1, .6, f"N = {len(data)}", transform=ax.transAxes)
 
 
-def pairplot(df, plt_vars, plt_name):
+def boxplots(df, output_dir):
+    df = df.sort_values(by='query_date')
+    for metric in ['flow', 'net_flow', 'net_rate_100']:
+        ax = sns.boxplot(x="query_date", y=metric, data=df, hue='eu')
+        ax.set_xticklabels(df['query_date'].unique(), rotation=45)
+        plt.tight_layout()
+        plt.savefig(f"{output_dir}/boxplot_{metric}.png", dpi=300)
+        plt.close()
+
+
+def facet_hist(df, plt_vars, output_dir):
+    hist_df = df.replace({-np.inf: np.nan, np.inf: np.nan}
+        ).sort_values(by='query_date')
+    for plt_var in plt_vars:
+        g = sns.FacetGrid(
+            hist_df[[plt_var, 'query_date', 'eu']].dropna(), col="query_date",
+            height=2, col_wrap=3, hue='eu'
+        )
+        g.map(sns.histplot, f"{plt_var}")
+        g.set_titles(col_template="{col_name}")
+        # g.map_dataframe(annotate)
+        g.tight_layout()
+        plt.savefig(f"{output_dir}/hist_{plt_var}.png", dpi=300)
+        plt.close()
+
+
+def pairplot(df, plt_vars, plt_name, output_dir):
     # TODO part of this is getting cut off? and the legend looks funky
     plt.figure(figsize=(10, 10))
     g = sns.pairplot(
         df.sort_values(by='query_date'), vars=plt_vars + ['flow'], hue='query_date',
         palette='crest', diag_kws=dict(fill=False), corner=True, dropna=True
     )
-    plt.savefig(f"{get_output_dir()}/{plt_name}.png", dpi=300)
+    plt.savefig(f"{output_dir}/{plt_name}_scatter.png", dpi=300)
     plt.close()
 
 
-def facet_hist(df, plt_vars):
-    hist_df = df.replace({-np.inf: np.nan, np.inf: np.nan}
-        ).sort_values(by='query_date')
-    for plt_var in plt_vars:
-        g = sns.FacetGrid(
-            hist_df[[plt_var, 'query_date']].dropna(), col="query_date",
-            height=2, col_wrap=3
-        )
-        g.map(sns.histplot, f"{plt_var}")
-        g.set_titles(col_template="{col_name}")
-        g.map_dataframe(annotate)
-        g.tight_layout()
-        plt.savefig(f"{get_output_dir()}/hist_{plt_var}.png", dpi=300)
-        plt.close()
-
-
-def corr_matrix(df, plt_vars, loc_str, suffix, type='pearson'):
+def corr_matrix(df, plt_vars, loc_str, suffix, output_dir, type='pearson'):
     # put the dependent variable first
     cols = sorted(plt_vars)
     cols.insert(0, cols.pop(cols.index('flow')))
@@ -94,53 +106,54 @@ def corr_matrix(df, plt_vars, loc_str, suffix, type='pearson'):
     ax.set_title(f"{loc_str} {title_str} coefficients")
     ax.add_patch(Rectangle((0, 1), 1, len(plt_vars), fill=False, edgecolor='blue', lw=3))
     plt.tight_layout()
-    plt.savefig(f"{get_output_dir()}/{prefix}_corr_matrix_{suffix}.png", dpi=300)
+    plt.savefig(f"{output_dir}/{prefix}_corr_matrix_{suffix}.png", dpi=300)
     plt.close()
 
 
-def main(save_hists=False, save_heatmaps=False, save_pairplots=False):
-    df = pd.read_csv(f"{get_input_dir()}/model_input.csv", low_memory=False)
-    categorical_cols = ['contig', 'comlang_ethno', 'colony', 'comcol',
-                        'curcol', 'col45', 'col', 'smctry']
-    cont_cols = [
-        'flow', 'net_flow', 'net_rate_100', 'users_orig', 'users_dest',
-        'pop_orig', 'gdp_orig', 'hdi_orig', 'pop_dest', 'gdp_dest', 'hdi_dest',
-        'area_orig', 'area_dest', 'internet_orig', 'internet_dest',
-        'dist_biggest_cities', 'dist_pop_weighted', 'dist_unweighted',
-        'csl', 'cnl', 'prox2'
-    ]
-    log_cols = get_log_cols(cont_cols)
-    df = log_tform(df, log_cols)
-    square_df = df.loc[df['comp'] == 1]
-    eu = square_df.loc[(df['eu_orig'] == 1) & (df['eu_dest'] == 1)]
-    if save_hists:
-        # histograms of each variable, with facets for collection dates
-        facet_hist(square_df, log_cols + categorical_cols)
-    if save_heatmaps:
-        corr_matrix(df, cont_cols, 'Global', 'global')
-        corr_matrix(square_df, cont_cols, 'Global', 'global_recip')
-        corr_matrix(eu, cont_cols, 'EU', 'eu_recip')
-        # add prox1-- this variable is sort of categorical?
-        corr_matrix(square_df, cont_cols + ['prox1'], 'Global', 'global_recip', type='spearman')
-        corr_matrix(eu, cont_cols + ['prox1'], 'EU', 'eu_recip', type='spearman')
-    
-    if save_pairplots:
-        pairplot(
-            eu,
-            ['cnl', 'gdp_dest', 'hdi_dest', 'internet_dest', 'prox1',
-            'users_orig', 'users_dest', 'pop_orig', 'pop_dest'], 'eu_scatter')
-        pairplot(
-            square_df,
-            ['gdp_dest', 'gdp_orig', 'hdi_dest', 'hdi_orig',
-            'internet_orig', 'internet_dest', 'users_dest', 'users_orig'],
-            'global_scatter'
-        )
+def main(save_hists=False, save_heatmaps=False, save_pairplots=False, save_boxplots=False):
+    for col in ['recip', 'by_date_recip']:
+        outdir = get_output_dir(sub_dir=col)
+        df = pd.read_csv(f"{get_input_dir()}/model_input_{col}_pairs.csv", low_memory=False)
+        categorical_cols = ['contig', 'comlang_ethno', 'colony', 'comcol',
+                            'curcol', 'col45', 'col', 'smctry']
+        cont_cols = [
+            'flow', 'net_flow', 'net_rate_100', 'users_orig', 'users_dest',
+            'pop_orig', 'gdp_orig', 'hdi_orig', 'pop_dest', 'gdp_dest', 'hdi_dest',
+            'area_orig', 'area_dest', 'internet_orig', 'internet_dest',
+            'dist_biggest_cities', 'dist_pop_weighted', 'dist_unweighted',
+            'csl', 'cnl', 'prox2'
+        ]
+        log_cols = get_log_cols(cont_cols)
+        df = log_tform(df, log_cols)
+        eu = df[df['eu'] == 1]
+        if save_hists:
+            # histograms of each variable, with facets for collection dates
+            facet_hist(df, log_cols + categorical_cols, outdir)
+        if save_boxplots:
+            boxplots(df, outdir)
+        for string, data in {'EU': eu, 'Global': df}.items():
+            if save_heatmaps:
+                corr_matrix(data, cont_cols, string, string.lower(), outdir)
+                # add prox1-- this variable is sort of categorical?
+                corr_matrix(
+                    data, cont_cols + ['prox1'], string, string.lower(), outdir,
+                    type='spearman')
+            if save_pairplots:
+                # columns chosen manually by inspection of previous plots
+                if string == 'EU':
+                    cols = ['cnl', 'gdp_dest', 'hdi_dest', 'internet_dest', 'prox1',
+                            'users_orig', 'users_dest', 'pop_orig', 'pop_dest']
+                else:
+                    cols = ['users_dest', 'users_orig', 'gdp_dest', 'gdp_orig',
+                            'hdi_dest', 'hdi_orig', 'internet_orig', 'internet_dest']
+                pairplot(data, cols, string, outdir)
 
-    for col in categorical_cols:
-        print('Global dataset')
-        ttest(square_df, col)
-        print('EU dataset')
-        ttest(eu, col)
+
+        for col in categorical_cols:
+            print('Global dataset')
+            ttest(df, col)
+            print('EU dataset')
+            ttest(eu, col)
 
 
 if __name__ == "__main__":
