@@ -1,7 +1,7 @@
 """Prep dyadic LinkedIn Recruiter data for all countries."""
 
 from datetime import datetime
-from collections import defaultdict
+from collections import defaultdict, namedtuple
 from os import listdir, path, pipe, mkdir
 
 import numpy as np
@@ -269,31 +269,25 @@ def bin_continuous_vars(df, cont_vars: list, q: int = 5):
     return df
 
 
-def _get_reciprocal_pairs(
-    df, id_cols=['iso3_orig', 'iso3_dest', 'query_date'], across=False):
+def _get_reciprocal_pairs(df, across=False):
+    id_cols = ['iso3_orig', 'iso3_dest', 'query_date']
     Countrypair = namedtuple('Countrypair', ['orig', 'dest'])
-    df_pairs = df[id_cols].set_index('query_date').apply(Countrypair._make, 1).groupby(
-        level=0).agg(lambda x: list(x.values)).to_dict()
-    recips = {
-        k: [(x.dest, x.orig) for x in v] for k, v in df_pairs.items()
+    df_pairs = df[id_cols].set_index('query_date').apply(
+        Countrypair._make, 1).groupby(level=0).agg(
+            lambda x: list(x.values)).to_dict()
+    recips = {k: [(x.dest, x.orig) for x in v] for k, v in df_pairs.items()}
+    date_pairs = {
+        date: list(set(df_pairs[date]) & set(recips[date]))
+        for date in df_pairs.keys()
     }
-    keep_pairs = {key: list(set(df_pairs[key]) & set(recips[key])) for key in df_pairs.keys()}
     if across:
-        keep_pairs = list(set.intersection(*map(set, keep_pairs.values())))
-        id_cols = id_cols.remove('query_date')
+        keep_pairs = list(set.intersection(*map(set, date_pairs.values())))
+        id_cols.remove('query_date')
     else:
-        # need to expand (flatten?) dictionary
-        keep_pairs = [(key, value[0], value[1]) for key, value in keep_pairs.items()]
-    return pd.DataFrame.from_records(keep_pairs, columns=id_cols)
-    
-    
-    recip_pairs = [
-        (iso3_dest, iso3_orig, query_date) for (iso3_orig, iso3_dest, query_date) in date_pairs]
-    recip_pairs = [(dest, orig, x) for orig, dest, x in data_pairs]
-    if across_col:
-        assert not within_col
-        reciprocal_pairs = [(dest, orig) for orig, dest in data_pairs]
-    keep_pairs = list(set(data_pairs) & set(reciprocal_pairs))
+        keep_pairs = []
+        for date, pairs in date_pairs.items():
+            for pair in pairs:
+                keep_pairs.append(tuple([pair[0], pair[1], date]))
     return pd.DataFrame.from_records(keep_pairs, columns=id_cols)
 
 
@@ -306,9 +300,8 @@ def flag_reciprocals(df):
     flagging reciprocal pairs within date of collection (by_date_recip)
     and across all dates (recip).
     """
-    id_cols = ['country_orig', 'country_dest']
-    across_date_df = _get_reciprocal_pairs(df, id_cols, across_col='query_date')
-    by_date_df = _get_reciprocal_pairs(df, id_cols, within_col='query_date')
+    across_date_df = _get_reciprocal_pairs(df, across=True)
+    by_date_df = _get_reciprocal_pairs(df)
     merge_map={'left_only': 0, 'both': 1}
     return df.merge(
         across_date_df, how='left', indicator='recip'
