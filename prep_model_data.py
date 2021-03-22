@@ -269,16 +269,29 @@ def bin_continuous_vars(df, cont_vars: list, q: int = 5):
     return df
 
 
-def _get_reciprocal_pairs(df, id_cols, within_col=None):
-    # use list of tuples [(date, orig, dest)] b/c quick to loop over &
-    # easily make a dataframe from it again
-    # another way to think about this is masking w/ matrices
-    if within_col:
-        id_cols.extend([within_col])
-    data_pairs = df[id_cols].to_records(index=False).tolist()
-    if within_col:
-        reciprocal_pairs = [(dest, orig, x) for orig, dest, x in data_pairs]
+def _get_reciprocal_pairs(
+    df, id_cols=['iso3_orig', 'iso3_dest', 'query_date'], across=False):
+    Countrypair = namedtuple('Countrypair', ['orig', 'dest'])
+    df_pairs = df[id_cols].set_index('query_date').apply(Countrypair._make, 1).groupby(
+        level=0).agg(lambda x: list(x.values)).to_dict()
+    recips = {
+        k: [(x.dest, x.orig) for x in v] for k, v in df_pairs.items()
+    }
+    keep_pairs = {key: list(set(df_pairs[key]) & set(recips[key])) for key in df_pairs.keys()}
+    if across:
+        keep_pairs = list(set.intersection(*map(set, keep_pairs.values())))
+        id_cols = id_cols.remove('query_date')
     else:
+        # need to expand (flatten?) dictionary
+        keep_pairs = [(key, value[0], value[1]) for key, value in keep_pairs.items()]
+    return pd.DataFrame.from_records(keep_pairs, columns=id_cols)
+    
+    
+    recip_pairs = [
+        (iso3_dest, iso3_orig, query_date) for (iso3_orig, iso3_dest, query_date) in date_pairs]
+    recip_pairs = [(dest, orig, x) for orig, dest, x in data_pairs]
+    if across_col:
+        assert not within_col
         reciprocal_pairs = [(dest, orig) for orig, dest in data_pairs]
     keep_pairs = list(set(data_pairs) & set(reciprocal_pairs))
     return pd.DataFrame.from_records(keep_pairs, columns=id_cols)
@@ -294,10 +307,8 @@ def flag_reciprocals(df):
     and across all dates (recip).
     """
     id_cols = ['country_orig', 'country_dest']
-    across_date_df = _get_reciprocal_pairs(df, id_cols)
-    by_date_df = _get_reciprocal_pairs(df, id_cols, 'query_date')
-    # quick check, should be more pairs kept for 'by_date'
-    assert len(by_date_df) > len(across_date_df)
+    across_date_df = _get_reciprocal_pairs(df, id_cols, across_col='query_date')
+    by_date_df = _get_reciprocal_pairs(df, id_cols, within_col='query_date')
     merge_map={'left_only': 0, 'both': 1}
     return df.merge(
         across_date_df, how='left', indicator='recip'
@@ -496,6 +507,7 @@ def main(update_chord_diagram=False):
 
     # save separate outputs
     # I may hate this idea and change it later
+    save_output(df, 'model_input')
     for col in ['recip', 'by_date_recip']:
         (df[df[col] == 1]
         .pipe(get_net_migration).pipe(save_output, f'model_input_{col}_pairs'))
