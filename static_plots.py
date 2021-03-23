@@ -4,13 +4,17 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from os import path, mkdir
 from matplotlib.patches import Rectangle
+from matplotlib.colors import LinearSegmentedColormap
 from prep_model_data import get_input_dir, _get_working_dir
 from scipy import stats
 import statsmodels.stats.api as sms
 
 
 def get_output_dir(custom_dir=None, sub_dir=None):
-    outdir = path.join(_get_working_dir(custom_dir), 'plots', sub_dir)
+    if sub_dir:
+        outdir = path.join(_get_working_dir(custom_dir), 'plots', sub_dir)
+    else:
+        outdir = path.join(_get_working_dir(custom_dir), 'plots')
     if not path.exists(outdir):
         mkdir(outdir)
     return outdir
@@ -110,6 +114,44 @@ def corr_matrix(df, plt_vars, loc_str, suffix, output_dir, type='pearson'):
     plt.close()
 
 
+def recip_pairs_heatmap(df, outdir):
+    if not (df.eu_uk == 1).values.all():
+        df = df[df['eu_uk'] == 1]
+    assert df['recip'].isin([0,1]).values.all()
+    # prep data
+    recip_pairs = df[
+        ['country_orig', 'country_dest', 'recip']
+    ].drop_duplicates().rename(
+        columns={'country_orig': 'Origin Country',
+                 'country_dest': 'Destination Country'}
+    ).pivot_table(
+        values='recip', index='Origin Country',
+        columns='Destination Country', fill_value=0
+    )
+    # create figure
+    plt.figure(figsize=(10,10))
+    # change colors to be binary, not continuous
+    colors = ["lightgray", "salmon"]
+    cmap = LinearSegmentedColormap.from_list('Custom', colors, len(colors))
+    # make plot
+    ax = sns.heatmap(recip_pairs, square=True, cmap=cmap, linewidths=.5,
+                     cbar_kws={"shrink": .5})
+    # Let the horizontal axes labeling appear on top.
+    ax.xaxis.set_label_position('top') 
+    ax.tick_params(top=True, bottom=False,
+                   labeltop=True, labelbottom=False)
+    # Rotate the tick labels and set their alignment.
+    plt.setp(ax.get_xticklabels(), rotation=-30, ha="right",
+             rotation_mode="anchor")
+    # set colorbar labels
+    colorbar = ax.collections[0].colorbar
+    colorbar.set_ticks([0.25,0.75])
+    colorbar.set_ticklabels(['excluded', 'included'])
+    plt.tight_layout()
+    plt.savefig(f"{outdir}/eu_heatmap_recip_pairs.png", dpi=300)
+    plt.close()
+
+
 def main(save_hists=False, save_heatmaps=False, save_pairplots=False, save_boxplots=False):
     for col in ['recip', 'by_date_recip']:
         outdir = get_output_dir(sub_dir=col)
@@ -148,12 +190,18 @@ def main(save_hists=False, save_heatmaps=False, save_pairplots=False, save_boxpl
                             'hdi_dest', 'hdi_orig', 'internet_orig', 'internet_dest']
                 pairplot(data, cols, string, outdir)
 
-
         for col in categorical_cols:
             print('Global dataset')
             ttest(df, col)
             print('EU dataset')
             ttest(eu, col)
+
+    # save another thing
+    recip_pairs_heatmap(
+        pd.read_csv(f"{get_input_dir()}/model_input.csv",
+                    low_memory=False),
+        get_output_dir()
+    )
 
 
 if __name__ == "__main__":
