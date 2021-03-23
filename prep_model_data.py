@@ -6,6 +6,7 @@ from os import listdir, path, pipe, mkdir
 
 import numpy as np
 import pandas as pd
+from scipy.stats import variation
 from pycountry import countries, historic_countries
 
 
@@ -322,7 +323,7 @@ def get_net_migration(df, value_col='flow', add_cols=['query_date']):
         net_rate_100=lambda x: (x['net_flow'] / x['users_orig']) * 100)
 
 
-def get_percent_change(df, diff_col='query_date'):
+def get_rolling_variation(df, diff_col='query_date'):
     # check percent difference between the two dates of data collection
     value_cols = ['flow', 'users_orig', 'users_dest']
     id_cols = ['iso3_dest', 'iso3_orig']
@@ -338,7 +339,12 @@ def get_percent_change(df, diff_col='query_date'):
         # lastly, merge on original values
         df[id_cols + value_cols + [diff_col]],
         on=id_cols + [diff_col], how='right', suffixes=('_pct_change', '')
-    ).assign(flow_std=df.groupby(id_cols)['flow'].transform('std'))
+    ).assign(
+        flow_std=df.groupby(id_cols)['flow'].transform('std'),
+        flow_cv=df.groupby(id_cols)['flow'].transform(variation),
+        mean=df.groupby(id_cols)['flow'].transform('mean'),
+        median=df.groupby(id_cols)['flow'].transform('median')
+    )
 
 
 def drop_bad_rows(df):
@@ -488,7 +494,9 @@ def main(update_chord_diagram=False):
           .pipe(standardize_col_names)
     )
     # see changes across data collection dates
-    save_output(get_percent_change(df), 'rolling_pct_change')
+    (df.pipe(get_rolling_variation)
+       .pipe(flag_reciprocals)
+       .pipe(save_output, 'rolling_variation'))
 
     df = (df.pipe(merge_region_subregion)
        .pipe(drop_bad_rows)
