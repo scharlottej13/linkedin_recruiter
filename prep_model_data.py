@@ -270,6 +270,19 @@ def bin_continuous_vars(df, cont_vars: list, q: int = 5):
     return df
 
 
+def sensitivity_reciprocal_pairs(df, across=True):
+    """Assess if removing any collection dates increases pairs."""
+    baseline = len(_get_reciprocal_pairs(df, across))
+    for date in df.query_date.unique():
+        recip_df = _get_reciprocal_pairs(
+            df.query(f'query_date != "{date}"'), across
+        )
+        if len(recip_df) > baseline:
+            print(f'Dropping {date} increased number of pairs by:\n\
+                  {len(recip_df) - baseline}')
+
+
+
 def _get_reciprocal_pairs(df, across=False):
     id_cols = ['iso3_orig', 'iso3_dest', 'query_date']
     Countrypair = namedtuple('Countrypair', ['orig', 'dest'])
@@ -292,7 +305,7 @@ def _get_reciprocal_pairs(df, across=False):
     return pd.DataFrame.from_records(keep_pairs, columns=id_cols)
 
 
-def flag_reciprocals(df):
+def flag_reciprocals(df, sensitivity=False):
     """Add columns flagging reciprocal origin, destination pairs.
 
     We know that not all countries of origin are represented in these data,
@@ -301,6 +314,8 @@ def flag_reciprocals(df):
     flagging reciprocal pairs within date of collection (by_date_recip)
     and across all dates (recip).
     """
+    if sensitivity:
+        sensitivity_reciprocal_pairs(df)
     across_date_df = _get_reciprocal_pairs(df, across=True)
     by_date_df = _get_reciprocal_pairs(df)
     merge_map={'left_only': 0, 'both': 1}
@@ -323,7 +338,7 @@ def get_net_migration(df, value_col='flow', add_cols=['query_date']):
         net_rate_100=lambda x: (x['net_flow'] / x['users_orig']) * 100)
 
 
-def get_rolling_variation(df, diff_col='query_date'):
+def get_pct_change(df, diff_col='query_date'):
     # check percent difference between the two dates of data collection
     value_cols = ['flow', 'users_orig', 'users_dest']
     id_cols = ['iso3_dest', 'iso3_orig']
@@ -339,11 +354,18 @@ def get_rolling_variation(df, diff_col='query_date'):
         # lastly, merge on original values
         df[id_cols + value_cols + [diff_col]],
         on=id_cols + [diff_col], how='right', suffixes=('_pct_change', '')
-    ).assign(
-        flow_std=df.groupby(id_cols)['flow'].transform('std'),
-        flow_cv=df.groupby(id_cols)['flow'].transform(variation),
-        mean=df.groupby(id_cols)['flow'].transform('mean'),
-        median=df.groupby(id_cols)['flow'].transform('median')
+    )
+
+
+def get_variation(df, by_cols=['country_dest', 'country_orig'],
+                  across_col='query_date'):
+    assert not df[by_cols + [across_col]].duplicated().values.any()
+    return df.assign(
+        num_dates=df.groupby(by_cols)['query_date'].transform('count'),
+        std=df.groupby(by_cols)['flow'].transform('std'),
+        cv=df.groupby(by_cols)['flow'].transform(variation),
+        mean=df.groupby(by_cols)['flow'].transform('mean'),
+        median=df.groupby(by_cols)['flow'].transform('median')
     )
 
 
@@ -357,7 +379,9 @@ def drop_bad_rows(df):
     )
     # few of these, drop b/c should not be possible
     same = (df['iso3_dest'] == df['iso3_orig'])
-    return df[~(too_big | same)]
+    # dropping feb 8th increases the number of pairs
+    feb8 = (df['query_date'] == '2021-02-08')
+    return df[~(too_big | same | feb8)]
 
 
 def add_metadata(df):
@@ -494,21 +518,20 @@ def main(update_chord_diagram=False):
           .pipe(standardize_col_names)
     )
     # see changes across data collection dates
-    (df.pipe(get_rolling_variation)
-       .pipe(flag_reciprocals)
-       .pipe(save_output, 'rolling_variation'))
+    (df.pipe(get_pct_change)
+       .pipe(save_output, 'pct_change'))
 
     df = (df.pipe(merge_region_subregion)
-       .pipe(drop_bad_rows)
        .pipe(add_metadata)
        .pipe(bin_continuous_vars, ['hdi', 'gdp'])
        .pipe(data_validation)
+       .pipe(drop_bad_rows)
        # this has to happen last!
-       .pipe(flag_reciprocals))
+       .pipe(flag_reciprocals, True))
 
     # save separate outputs
     # I may hate this idea and change it later
-    save_output(df, 'model_input')
+    (df.pipe(get_variation).pipe(save_output, 'model_input'))
     for col in ['recip', 'by_date_recip']:
         (df[df[col] == 1]
         .pipe(get_net_migration).pipe(save_output, f'model_input_{col}_pairs'))
