@@ -6,7 +6,7 @@ from os import listdir, path, pipe, mkdir
 
 import numpy as np
 import pandas as pd
-from scipy.stats import variation
+from scipy.stats import variation as cv, sem
 from pycountry import countries, historic_countries
 
 
@@ -357,16 +357,20 @@ def get_pct_change(df, diff_col='query_date'):
     )
 
 
-def get_variation(df, by_cols=['country_dest', 'country_orig'],
-                  across_col='query_date'):
+def get_variation(
+    df, by_cols=['country_orig', 'country_dest'],
+    across_col='query_date', value_cols=['flow', 'net_rate_100']
+):
     assert not df[by_cols + [across_col]].duplicated().values.any()
-    return df.assign(
-        num_dates=df.groupby(by_cols)['query_date'].transform('count'),
-        std=df.groupby(by_cols)['flow'].transform('std'),
-        cv=df.groupby(by_cols)['flow'].transform(variation),
-        mean=df.groupby(by_cols)['flow'].transform('mean'),
-        median=df.groupby(by_cols)['flow'].transform('median')
-    )
+    def rsem(x):
+        return sem(x) / np.mean(x)
+    v_df = df.groupby(by_cols)[value_cols].agg(
+        ['std', 'mean', 'median', 'count', cv, sem, rsem]
+    ).reset_index()
+    v_df.columns = ['_'.join(x) if '' not in x else ''.join(x)
+                    for x in v_df.columns]
+    # grab some other helpful columns
+    return v_df.merge(df[by_cols+ ['eu_uk']])
 
 
 def drop_bad_rows(df):
@@ -527,20 +531,24 @@ def main(update_chord_diagram=False):
        .pipe(data_validation)
        .pipe(drop_bad_rows)
        # this has to happen last!
-       .pipe(flag_reciprocals, True))
+       .pipe(flag_reciprocals, False))
 
     # save separate outputs
-    # I may hate this idea and change it later
-    (df.pipe(get_variation).pipe(save_output, 'model_input'))
+    save_output(df, 'model_input')
     for col in ['recip', 'by_date_recip']:
-        (df[df[col] == 1]
-        .pipe(get_net_migration).pipe(save_output, f'model_input_{col}_pairs'))
+        (df[df[col] == 1].pipe(get_net_migration)
+                         .pipe(save_output, f'model_input_{col}_pairs'))
+    # variation only
+    (df[df['recip'] == 1].pipe(get_net_migration)
+                         .pipe(get_variation)
+                         .pipe(save_output, f'variation'))
 
-    # TODO if you run this bit again then decide which df should be used
-    # collapse by HDI, GDP, and "midregion"
     if update_chord_diagram:
         for grp_var in ['hdi', 'gdp', 'midreg']:
-            save_output(collapse(df, grp_var), f'{grp_var}_chord_diagram')
+            save_output(
+                collapse(df[df['recip'] == 1], grp_var),
+                f'{grp_var}_chord_diagram'
+            )
 
 
 if __name__ == "__main__":
