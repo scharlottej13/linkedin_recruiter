@@ -68,6 +68,28 @@ def standardize_col_names(df):
               .drop(drop, axis=1, errors='ignore'))
 
 
+def reshape_long_wide(df, wide_col='query_info',
+                      value_cols=['users_orig', 'users_dest', 'flow'],
+                      hack=True):
+    """Reshape wide_col from long to wide."""
+    if hack:
+        # CHANGE THIS LATER - Tom is investigating
+        return df[~(df['query_date'].str.startswith('2021-03-2'))].drop(
+            [wide_col], axis=1)
+    else:
+        idx_cols = list(
+            set([x for x in df.columns]) - set(value_cols + [wide_col])
+        )
+        df = df.pivot_table(index=idx_cols, columns=wide_col,
+                    values=value_cols).reset_index()
+        df.columns = ['_'.join(x) if '' not in x else ''.join(x)
+                    for x in df.columns]
+        # query_info column takes two values: 'r4' and 'r6_remote'
+        # r4 is those open to relocating, r6 is AND open to remote work
+        df.columns = df.columns.to_series().replace({'_r[46]': ''}, regex=True)
+        return df
+
+
 def prep_country_area():
     """Clean up file with country areas.
 
@@ -369,8 +391,8 @@ def get_variation(
     ).reset_index()
     v_df.columns = ['_'.join(x) if '' not in x else ''.join(x)
                     for x in v_df.columns]
-    # grab some other helpful columns
-    return v_df.merge(df[by_cols+ ['eu_uk']])
+    add_cols = ['eu_uk', 'subregion_orig', 'subregion_dest']
+    return v_df.merge(df[by_cols + add_cols].drop_duplicates())
 
 
 def drop_bad_rows(df):
@@ -383,9 +405,9 @@ def drop_bad_rows(df):
     )
     # few of these, drop b/c should not be possible
     same = (df['iso3_dest'] == df['iso3_orig'])
-    # dropping feb 8th increases the number of pairs
-    feb8 = (df['query_date'] == '2021-02-08')
-    return df[~(too_big | same | feb8)]
+    # dropping feb 8th, march 10th increases the number of pairs
+    low_pairs = (df['query_date'].isin(['2021-02-08', '2021-03-10']))
+    return df[~(too_big | same | low_pairs)]
 
 
 def add_metadata(df):
@@ -448,8 +470,17 @@ def fill_missing_borders(df):
     return df.drop('neighbor', axis=1)
 
 
+def get_total_users(df):
+    keep_cols = [x for x in df.columns if '_dest' in x] + ['query_date']
+    eu = prep_eu_states()
+    eu_uk_iso3s = eu[eu['eu_uk'] == 1].index.values
+    df = df[keep_cols].drop_duplicates()
+    df['eu_uk'] = df['iso3_dest'].apply(lambda x: 1 if x in eu_uk_iso3s else 0)
+    return df
+
+
 def fix_query_date(df, cutoff=np.timedelta64(10, 'D')):
-    """Adjust date of collection for probable timeout errors from LinkedIn."""
+    """Adjust date of collection for timeout errors."""
     date_fmt = '%Y-%m-%d'
     dates = sorted(
         [datetime.strptime(x, date_fmt) for x in df['query_date'].unique()]
@@ -512,14 +543,16 @@ def test_no_duplicates():
 
 def collapse(df, var, id_cols=None, value_col='flow'):
     if id_cols is None:
-        id_cols = [f'orig_{var}', f'dest_{var}', 'query_date']
+        id_cols = [x for x in df.columns if
+                   (var in x) & ('bin' in x)] + ['query_date']
     return df.groupby(id_cols)[value_col].sum().reset_index()
 
 
-def main(update_chord_diagram=False):
+def main(update_chord_diagram=True):
     df = (
         pd.read_csv(path.join(get_input_dir(), get_latest_data()))
           .pipe(standardize_col_names)
+          .pipe(reshape_long_wide)
     )
     # see changes across data collection dates
     (df.pipe(get_pct_change)
@@ -531,9 +564,10 @@ def main(update_chord_diagram=False):
        .pipe(data_validation)
        .pipe(drop_bad_rows)
        # this has to happen last!
-       .pipe(flag_reciprocals, False))
+       .pipe(flag_reciprocals, True))
 
     # save separate outputs
+    save_output(get_total_users(df), 'total_users')
     save_output(df, 'model_input')
     for col in ['recip', 'by_date_recip']:
         (df[df[col] == 1].pipe(get_net_migration)
@@ -544,7 +578,7 @@ def main(update_chord_diagram=False):
                          .pipe(save_output, f'variation'))
 
     if update_chord_diagram:
-        for grp_var in ['hdi', 'gdp', 'midreg']:
+        for grp_var in ['hdi', 'gdp', 'midreg', 'subregion']:
             save_output(
                 collapse(df[df['recip'] == 1], grp_var),
                 f'{grp_var}_chord_diagram'
