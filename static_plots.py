@@ -50,13 +50,13 @@ def annotate(data, **kws):
     ax.text(.1, .6, f"N = {len(data)}", transform=ax.transAxes)
 
 
-def boxplots(df, output_dir):
+def violins(df, prefix, output_dir):
     df = df.sort_values(by='query_date')
     for metric in ['flow', 'net_flow', 'net_rate_100']:
-        ax = sns.boxplot(x="query_date", y=metric, data=df, hue='eu')
+        ax = sns.violinplot(x="query_date", y=metric, data=df)
         ax.set_xticklabels(df['query_date'].unique(), rotation=45)
         plt.tight_layout()
-        plt.savefig(f"{output_dir}/boxplot_{metric}.png", dpi=300)
+        plt.savefig(f"{output_dir}/{prefix}_violin_{metric}.png", dpi=300)
         plt.close()
 
 
@@ -114,9 +114,8 @@ def corr_matrix(df, plt_vars, loc_str, suffix, output_dir, type='pearson'):
     plt.close()
 
 
-def recip_pairs_heatmap(df, outdir):
-    if not (df.eu_uk == 1).values.all():
-        df = df[df['eu_uk'] == 1]
+def data_availability(df, outdir):
+    """Save heatmap showing for which countries we have reciprocal pairs."""
     assert df['recip'].isin([0,1]).values.all()
     # prep data
     recip_pairs = df[
@@ -126,8 +125,7 @@ def recip_pairs_heatmap(df, outdir):
                  'country_dest': 'Destination Country'}
     ).pivot_table(
         values='recip', index='Origin Country',
-        columns='Destination Country', fill_value=0
-    )
+        columns='Destination Country', fill_value=0)
     # create figure
     plt.figure(figsize=(10,10))
     # change colors to be binary, not continuous
@@ -148,11 +146,11 @@ def recip_pairs_heatmap(df, outdir):
     colorbar.set_ticks([0.25,0.75])
     colorbar.set_ticklabels(['excluded', 'included'])
     plt.tight_layout()
-    plt.savefig(f"{outdir}/eu_heatmap_recip_pairs.png", dpi=300)
+    plt.savefig(f"{outdir}/heatmap_recip_pairs.png", dpi=300)
     plt.close()
 
 
-def main(save_hists=False, save_heatmaps=False, save_pairplots=False, save_boxplots=False):
+def main(save_hists=False, save_heatmaps=False, save_pairplots=False, save_violins=True):
     for col in ['recip', 'by_date_recip']:
         outdir = get_output_dir(sub_dir=col)
         df = pd.read_csv(f"{get_input_dir()}/model_input_{col}_pairs.csv", low_memory=False)
@@ -171,9 +169,9 @@ def main(save_hists=False, save_heatmaps=False, save_pairplots=False, save_boxpl
         if save_hists:
             # histograms of each variable, with facets for collection dates
             facet_hist(df, log_cols + categorical_cols, outdir)
-        if save_boxplots:
-            boxplots(df, outdir)
         for string, data in {'EU': eu, 'Global': df}.items():
+            if save_violins:
+                violins(data, string, outdir)
             if save_heatmaps:
                 corr_matrix(data, cont_cols, string, string.lower(), outdir)
                 # add prox1-- this variable is sort of categorical?
@@ -197,11 +195,10 @@ def main(save_hists=False, save_heatmaps=False, save_pairplots=False, save_boxpl
             ttest(eu, col)
 
     # save another thing
-    recip_pairs_heatmap(
+    data_availability(
         pd.read_csv(f"{get_input_dir()}/model_input.csv",
-                    low_memory=False),
-        get_output_dir()
-    )
+                    low_memory=False).query("eu_uk == 1"),
+        get_output_dir())
 
 
 if __name__ == "__main__":
