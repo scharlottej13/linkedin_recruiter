@@ -35,10 +35,10 @@ def log_tform(df, log_cols):
     return df
 
 
-def ttest(df, grp_var, date='2020-10-08'):
-    # TODO include other dates of data collection
-    a = df[(df[f'{grp_var}'] == 1) & (df['query_date'] == date)]['flow'].values
-    b = df[(df[f'{grp_var}'] == 0) & (df['query_date'] == date)]['flow'].values
+def ttest(df, grp_var):
+    # TODO not quite right, need to account for repeated measures (dates)
+    a = df[df[f'{grp_var}'] == 1]['flow'].values
+    b = df[df[f'{grp_var}'] == 0]['flow'].values
     print(f'T test for {grp_var}')
     print(stats.ttest_ind(a, b, equal_var=False))
     cm = sms.CompareMeans(sms.DescrStatsW(a), sms.DescrStatsW(b))
@@ -115,17 +115,33 @@ def corr_matrix(df, plt_vars, loc_str, suffix, output_dir, type='pearson'):
 
 
 def data_availability(df, outdir):
+    assert df['recip'].isin([0, 1]).values.all()
+    eu = df.query("eu_uk == 1")
+    eu_pairs_heatmap(eu, outdir)
+    def _get_num_pairs(df, col_name):
+        return (
+            df.groupby('query_date')[['iso3_orig', 'iso3_dest']].count().drop(
+            'iso3_dest', axis=1).rename(columns={'iso3_orig': col_name})
+        )
+    # I'm sure there is a nicer way to do this w/ some stack() something
+    pd.concat([
+        _get_num_pairs(df, 'pairs'),
+        _get_num_pairs(df[df['by_date_recip'] == 1], 'pairs (by date)'),
+        _get_num_pairs(df[df['recip'] == 1], 'pairs (across dates)'),
+        _get_num_pairs(eu, 'EU +UK pairs'),
+        _get_num_pairs(eu[eu['by_date_recip'] == 1], 'EU +UK pairs (by date)'),
+        _get_num_pairs(eu[eu['recip'] == 1], 'EU +UK pairs (across dates)')
+    ], axis=1).to_csv(f'{outdir}/reciprocal_pairs.csv')
+
+
+def eu_pairs_heatmap(df, outdir):
     """Save heatmap showing for which countries we have reciprocal pairs."""
-    assert df['recip'].isin([0,1]).values.all()
-    # prep data
     recip_pairs = df[
         ['country_orig', 'country_dest', 'recip']
     ].drop_duplicates().rename(
         columns={'country_orig': 'Origin Country',
                  'country_dest': 'Destination Country'}
-    ).pivot_table(
-        values='recip', index='Origin Country',
-        columns='Destination Country', fill_value=0)
+    ).pivot_table('recip', 'Origin Country', 'Destination Country', fill_value=0)
     # create figure
     plt.figure(figsize=(10,10))
     # change colors to be binary, not continuous
@@ -135,7 +151,7 @@ def data_availability(df, outdir):
     ax = sns.heatmap(recip_pairs, square=True, cmap=cmap, linewidths=.5,
                      cbar_kws={"shrink": .5})
     # Let the horizontal axes labeling appear on top.
-    ax.xaxis.set_label_position('top') 
+    ax.xaxis.set_label_position('top')
     ax.tick_params(top=True, bottom=False,
                    labeltop=True, labelbottom=False)
     # Rotate the tick labels and set their alignment.
@@ -150,7 +166,80 @@ def data_availability(df, outdir):
     plt.close()
 
 
-def main(save_hists=False, save_heatmaps=False, save_pairplots=False, save_violins=True):
+def variation_heatmap(outdir):
+    df = pd.read_csv(f"{get_input_dir()}/variation.csv").assign(
+        flow_variation_pct=lambda x: x['flow_variation'] * 100
+    ).query("eu_uk == 1")
+    for metric in ['flow_variation_pct', 'flow_median']:
+        if metric == 'flow_variation_pct':
+            metric_str = 'Coefficient of Variation (%)'
+        if metric == 'flow_median':
+            metric_str = 'Median'
+        recip_pairs = df[
+            ['country_orig', 'country_dest', metric]
+        ].rename(
+            columns={'country_orig': 'Origin Country',
+                    'country_dest': 'Destination Country'}
+        ).pivot_table(metric, 'Origin Country', 'Destination Country')
+        # create figure
+        plt.figure(figsize=(10, 10))
+        # make plot
+        ax = sns.heatmap(
+            recip_pairs, square=True, linewidths=.5,
+            annot=True, fmt='.1g', cbar_kws={"shrink": .5},
+            cmap=sns.color_palette("viridis", as_cmap=True)
+        )
+        # Let the horizontal axes labeling appear on top.
+        ax.xaxis.set_label_position('top')
+        ax.tick_params(top=True, bottom=False, labeltop=True, labelbottom=False)
+        ax.set_title(f'{metric_str} across 11 collection dates', fontsize=15)
+        # add '%' to colorbar
+        cb = ax.collections[0].colorbar
+        cb.ax.set_yticklabels([f'{i}%' for i in cb.get_ticks()])
+        # Rotate the tick labels and set their alignment.
+        plt.setp(ax.get_xticklabels(), rotation=-30, ha="right",
+                 rotation_mode="anchor")
+        plt.tight_layout()
+        plt.savefig(f"{outdir}/heatmap_{metric}.png", dpi=300)
+        plt.close()
+
+
+def line_plt(outdir):
+    # data prep
+    df = pd.read_csv(f"{get_input_dir()}/total_users.csv").sort_values(
+        by=['query_date', 'users_dest'], ascending=[True, False])
+    df['mean'] = df.groupby('country_dest')['users_dest'].transform('mean')
+    top_15 = df[['mean', 'country_dest']].drop_duplicates().sort_values(
+        by='mean', ascending=False).head(15)['country_dest'].values
+    for loc in ['eu', 'top15']:
+        if loc == 'eu':
+            data = df[df['eu_uk'] == 1]
+            loc_str = 'EU + UK'
+            suffix = 'eu'
+        if loc == 'top15':
+            data = df[df['country_dest'].isin(top_15)]
+            loc_str = 'top 15, by number of users'
+            suffix = 'top15'
+        plt.figure(figsize=(10, 10))
+        ax = sns.lineplot(
+            data=data, x=data['query_date'], y=data['users_dest'],
+            hue=data['country_dest'], style=data['country_dest']
+        )
+        ax.set_xticklabels(
+            data['query_date'].unique(),
+            rotation=45, horizontalalignment='right')
+        ax.set_yticklabels(['{:,.0f}'.format(x)
+                            for x in ax.get_yticks().tolist()])
+        plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+        plt.xlabel('Date of Data Collection')
+        plt.ylabel('Country')
+        plt.title(f'Number of LinkedIn Users by Country ({loc_str})')
+        plt.tight_layout()
+        plt.savefig(f"{outdir}/lineplt_{suffix}.png", dpi=300)
+        plt.close()
+
+
+def main(save_hists=False, save_heatmaps=False, save_pairplots=False, save_violins=False):
     for col in ['recip', 'by_date_recip']:
         outdir = get_output_dir(sub_dir=col)
         df = pd.read_csv(f"{get_input_dir()}/model_input_{col}_pairs.csv", low_memory=False)
@@ -187,18 +276,18 @@ def main(save_hists=False, save_heatmaps=False, save_pairplots=False, save_violi
                     cols = ['users_dest', 'users_orig', 'gdp_dest', 'gdp_orig',
                             'hdi_dest', 'hdi_orig', 'internet_orig', 'internet_dest']
                 pairplot(data, cols, string, outdir)
-
-        for col in categorical_cols:
-            print('Global dataset')
-            ttest(df, col)
-            print('EU dataset')
-            ttest(eu, col)
+        if col == 'recip':
+            for x in categorical_cols:
+                print(f'Global dataset:\n{ttest(df, x)}')
+                print(f'EU dataset:\n{ttest(eu, x)}')
 
     # save another thing
     data_availability(
-        pd.read_csv(f"{get_input_dir()}/model_input.csv",
-                    low_memory=False).query("eu_uk == 1"),
+        pd.read_csv(f"{get_input_dir()}/model_input.csv", low_memory=False),
         get_output_dir())
+    # some more things
+    variation_heatmap(get_output_dir(sub_dir='recip'))
+    line_plt(get_output_dir())
 
 
 if __name__ == "__main__":
