@@ -2,15 +2,15 @@
 
 from datetime import datetime
 from collections import defaultdict, namedtuple
-from os import listdir, path, pipe, mkdir
+from os import listdir, path, pipe
 
 import numpy as np
 import pandas as pd
 from scipy.stats import variation as cv, sem
 from pycountry import countries, historic_countries
 
-from utils import (_get_working_dir, get_input_dir, save_output,
-no_duplicates, test_no_duplicates)
+from utils.io  import _get_working_dir, get_input_dir, save_output
+from utils.misc import no_duplicates, test_no_duplicates
 
 
 def get_latest_data():

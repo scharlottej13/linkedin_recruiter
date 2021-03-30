@@ -1,5 +1,5 @@
 import pandas as pd
-from utils import get_input_dir, _get_working_dir
+from utils.io import get_input_dir, _get_working_dir
 from prep_bilateral_flows import prep_eu_states
 
 
