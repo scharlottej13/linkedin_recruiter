@@ -41,8 +41,9 @@ def reshape_long_wide(df, wide_col='query_info',
     """Reshape wide_col from long to wide."""
     if hack:
         # CHANGE THIS LATER - Tom is investigating
-        return df[~(df['query_date'].str.startswith('2021-03-2'))].drop(
-            [wide_col], axis=1)
+        return df[df['query_info'] == 'r4'].drop('query_info', axis=1)
+        # return df[~(df['query_date'].str.startswith('2021-03-2'))].drop(
+        #     [wide_col], axis=1)
     else:
         idx_cols = list(
             set([x for x in df.columns]) - set(value_cols + [wide_col])
@@ -273,6 +274,8 @@ def sensitivity_reciprocal_pairs(df, across=True):
 
 
 def _get_reciprocal_pairs(df, across=False):
+    # TODO I think this could be faster
+    # https://realpython.com/numpy-array-programming/
     id_cols = ['iso3_orig', 'iso3_dest', 'query_date']
     Countrypair = namedtuple('Countrypair', ['orig', 'dest'])
     df_pairs = df[id_cols].set_index('query_date').apply(
@@ -305,7 +308,10 @@ def flag_reciprocals(df, sensitivity=False):
     """
     if sensitivity:
         sensitivity_reciprocal_pairs(df)
-    across_date_df = _get_reciprocal_pairs(df, across=True)
+    across_date_df = _get_reciprocal_pairs(
+        # dropping feb 8th, march 10th to increase the number of pairs
+        df[~(df['query_date'].isin(['2021-02-08', '2021-03-10']))], across=True
+    )
     by_date_df = _get_reciprocal_pairs(df)
     merge_map={'left_only': 0, 'both': 1}
     return df.merge(
@@ -372,9 +378,7 @@ def drop_bad_rows(df):
     )
     # few of these, drop b/c should not be possible
     same = (df['iso3_dest'] == df['iso3_orig'])
-    # dropping feb 8th, march 10th increases the number of pairs
-    low_pairs = (df['query_date'].isin(['2021-02-08', '2021-03-10']))
-    return df[~(too_big | same | low_pairs)]
+    return df[~(too_big | same)]
 
 
 def add_metadata(df):
@@ -508,7 +512,7 @@ def main(update_chord_diagram=True):
         for grp_var in ['hdi', 'gdp', 'midreg', 'subregion']:
             save_output(
                 collapse(df[df['recip'] == 1], grp_var),
-                f'{grp_var}_chord_diagram'
+                f'chord_diagram_{grp_var}'
             )
 
 
