@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 from os import path, mkdir
 from matplotlib.patches import Rectangle
 from matplotlib.colors import LinearSegmentedColormap
-from utils import get_input_dir, _get_working_dir
+from utils.io import get_input_dir, _get_working_dir
 from scipy import stats
 import statsmodels.stats.api as sms
 
@@ -207,38 +207,49 @@ def variation_heatmap(outdir):
         plt.close()
 
 
-def line_plt(outdir):
-    # data prep
-    df = pd.read_csv(f"{get_input_dir()}/total_users.csv").sort_values(
-        by=['query_date', 'users_dest'], ascending=[True, False])
-    df['mean'] = df.groupby('country_dest')['users_dest'].transform('mean')
-    top_15 = df[['mean', 'country_dest']].drop_duplicates().sort_values(
-        by='mean', ascending=False).head(15)['country_dest'].values
-    for loc in ['eu', 'top15']:
-        if loc == 'eu':
-            data = df[df['eu_uk'] == 1]
-            loc_str = 'EU + UK'
-            suffix = 'eu'
-        if loc == 'top15':
-            data = df[df['country_dest'].isin(top_15)]
-            loc_str = 'top 15, by number of users'
-            suffix = 'top15'
-        plt.figure(figsize=(10, 10))
-        ax = sns.lineplot(
-            data=data, x=data['query_date'], y=data['users_dest'],
-            hue=data['country_dest'], style=data['country_dest']
-        )
-        ax.set_xticklabels(
-            data['query_date'].unique(), rotation=45, ha='right')
-        ax.set_yticklabels(
-            ['{:,.0f}'.format(x) for x in ax.get_yticks().tolist()])
-        plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
-        plt.xlabel('Date of Data Collection')
-        plt.ylabel('Country')
-        plt.title(f'Number of LinkedIn Users by Country ({loc_str})')
-        plt.tight_layout()
-        plt.savefig(f"{outdir}/lineplt_{suffix}.png", dpi=300)
-        plt.close()
+def get_top_countries(df, value, country_col='country_dest', n=15):
+    """Return list of top n countries by some value, sorted by date."""
+    return df[[value, country_col]].drop_duplicates().sort_values(
+        by=value, ascending=False).head(n)[country_col].values
+
+
+def plt_over_time():
+    """Prep data for line plot over time."""
+    for value_col in ['users_dest', 'goers']:
+        df = pd.read_csv(f"{get_input_dir()}/goers.csv").dropna(
+            subset=['users_dest']).sort_values(
+            by=['date_key', value_col], ascending=[True, False])
+        for loc, loc_str in {'eu': 'EU + UK', 'top': 'top {n} countries'}.items():
+            if loc == 'eu':
+                data = df[df['eu_uk'] == 1]
+            if loc == 'top':
+                data = df[
+                    df['country_dest'].isin(get_top_countries(df, value_col))
+                ]
+            title_str = f'Number of LinkedIn Users by Country ({loc_str})'
+            if value_col =  'goers':
+                # change the loc string to be something different
+            make_line_plt(data, value_col, title_str, loc, outdir)
+
+
+def make_line_plt(data, value, title_str, suffix, outdir):
+    """Code for actual plot."""
+    plt.figure(figsize=(10, 10))
+    ax = sns.lineplot(
+        data=data, x=data['date_key'], y=data[value],
+        hue=data['country_dest'], style=data['country_dest']
+    )
+    ax.set_xticklabels(
+        data['date_key'].unique(), rotation=45, ha='right')
+    ax.set_yticklabels(
+        ['{:,.0f}'.format(x) for x in ax.get_yticks().tolist()])
+    plt.legend(bbox_to_anchor=(1.05, 1), loc=2, borderaxespad=0.)
+    plt.xlabel('Date of Data Collection')
+    plt.ylabel('Country')
+    plt.title(title_str)
+    plt.tight_layout()
+    plt.savefig(f"{outdir}/lineplt_users_{suffix}.png", dpi=300)
+    plt.close()
 
 
 def main(save_hists=False, save_heatmaps=False, save_pairplots=False, save_violins=False):
@@ -284,12 +295,12 @@ def main(save_hists=False, save_heatmaps=False, save_pairplots=False, save_violi
                 print(f'EU dataset:\n{ttest(eu, x)}')
 
     # save another thing
-    data_availability(
-        pd.read_csv(f"{get_input_dir()}/model_input.csv", low_memory=False),
-        get_output_dir())
+    # data_availability(
+    #     pd.read_csv(f"{get_input_dir()}/model_input.csv", low_memory=False),
+    #     get_output_dir(sub_dir='recip'))
     # some more things
-    variation_heatmap(get_output_dir(sub_dir='recip'))
-    # line_plt(get_output_dir())
+    # variation_heatmap(get_output_dir(sub_dir='recip'))
+    line_plt(get_output_dir())
 
 
 if __name__ == "__main__":
