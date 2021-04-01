@@ -213,22 +213,27 @@ def get_top_countries(df, value, country_col='country_dest', n=15):
         by=value, ascending=False).head(n)[country_col].values
 
 
-def plt_over_time():
+def plt_over_time(outdir):
     """Prep data for line plot over time."""
     for value_col in ['users_dest', 'goers']:
         df = pd.read_csv(f"{get_input_dir()}/goers.csv").dropna(
             subset=['users_dest']).sort_values(
-            by=['date_key', value_col], ascending=[True, False])
-        for loc, loc_str in {'eu': 'EU + UK', 'top': 'top {n} countries'}.items():
+                by=['date_key', value_col], ascending=[True, False])
+        n = 15
+        for loc in ['eu', 'top']:
             if loc == 'eu':
                 data = df[df['eu_uk'] == 1]
+                loc_str = 'EU + UK'
             if loc == 'top':
                 data = df[
-                    df['country_dest'].isin(get_top_countries(df, value_col))
+                    df['country_dest'].isin(get_top_countries(df, value_col, n=n))
                 ]
-            title_str = f'Number of LinkedIn Users by Country ({loc_str})'
-            if value_col =  'goers':
-                # change the loc string to be something different
+                loc_str = f'top {n} countries'
+                if value_col == 'goers':
+                    loc_str = f'top {n} destinations'
+            title_str = f'Number of LinkedIn users, by country ({loc_str})'
+            if value_col == 'goers':
+                title_str = f'Number of LinkedIn users open to relocating, by destination country ({loc_str})'
             make_line_plt(data, value_col, title_str, loc, outdir)
 
 
@@ -289,18 +294,19 @@ def main(save_hists=False, save_heatmaps=False, save_pairplots=False, save_violi
                     cols = ['users_dest', 'users_orig', 'gdp_dest', 'gdp_orig',
                             'hdi_dest', 'hdi_orig', 'internet_orig', 'internet_dest']
                 pairplot(data, cols, string, outdir)
-        if col == 'recip':
-            for x in categorical_cols:
-                print(f'Global dataset:\n{ttest(df, x)}')
-                print(f'EU dataset:\n{ttest(eu, x)}')
+        # if col == 'recip':
+        #     for x in categorical_cols:
+        #         print(f'Global dataset:\n{ttest(df, x)}')
+        #         print(f'EU dataset:\n{ttest(eu, x)}')
 
     # save another thing
-    # data_availability(
-    #     pd.read_csv(f"{get_input_dir()}/model_input.csv", low_memory=False),
-    #     get_output_dir(sub_dir='recip'))
+    data_availability(
+        pd.read_csv(f"{get_input_dir()}/model_input.csv", low_memory=False),
+        get_output_dir(sub_dir='recip'))
     # some more things
-    # variation_heatmap(get_output_dir(sub_dir='recip'))
-    line_plt(get_output_dir())
+    variation_heatmap(get_output_dir(sub_dir='recip'))
+    # TODO this line plot is not quite right
+    # plt_over_time(get_output_dir())
 
 
 if __name__ == "__main__":
