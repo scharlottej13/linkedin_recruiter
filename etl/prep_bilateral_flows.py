@@ -308,10 +308,11 @@ def flag_reciprocals(df, sensitivity=False):
     """
     if sensitivity:
         sensitivity_reciprocal_pairs(df)
-    across_date_df = _get_reciprocal_pairs(
-        # dropping feb 8th, march 10th to increase the number of pairs
-        df[~(df['query_date'].isin(['2021-02-08', '2021-03-10']))], across=True
-    )
+    # dropping feb 8th, march 10th to increase the number of pairs
+    # TODO YOU HAVE TO FIX THIS IF YOU WANT TO RUN 'prep_total_users_dest'
+    df = df[~(df['query_date'].isin(
+        ['2021-02-08', '2021-03-10', '2021-03-22']))]
+    across_date_df = _get_reciprocal_pairs(df, across=True)
     by_date_df = _get_reciprocal_pairs(df)
     merge_map={'left_only': 0, 'both': 1}
     return df.merge(
@@ -354,7 +355,8 @@ def get_pct_change(df, diff_col='query_date'):
 
 def get_variation(
     df, by_cols=['country_orig', 'country_dest'],
-    across_col='query_date', value_cols=['flow', 'net_rate_100']
+    across_col='query_date',
+    value_cols=['flow', 'net_rate_100', 'users_orig', 'users_dest']
 ):
     assert not df[by_cols + [across_col]].duplicated().values.any()
     def rsem(x):
@@ -364,7 +366,8 @@ def get_variation(
     ).reset_index()
     v_df.columns = ['_'.join(x) if '' not in x else ''.join(x)
                     for x in v_df.columns]
-    add_cols = ['eu_uk', 'subregion_orig', 'subregion_dest']
+    add_cols = ['eu_uk'] + [f'{x}_{y}' for x in ['region', 'subregion', 'midregion']
+                for y in ['orig', 'dest']]
     return v_df.merge(df[by_cols + add_cols].drop_duplicates())
 
 
