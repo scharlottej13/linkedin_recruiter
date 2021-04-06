@@ -300,9 +300,9 @@ def main(save_hists=False, save_heatmaps=False, save_pairplots=False, save_violi
         #         print(f'EU dataset:\n{ttest(eu, x)}')
 
     # save another thing
-    data_availability(
-        pd.read_csv(f"{get_input_dir()}/model_input.csv", low_memory=False),
-        get_output_dir(sub_dir='recip'))
+    # data_availability(
+    #     pd.read_csv(f"{get_input_dir()}/model_input.csv", low_memory=False),
+    #     get_output_dir(sub_dir='recip'))
     # some more things
     variation_heatmap(get_output_dir(sub_dir='recip'))
     # TODO this line plot is not quite right
