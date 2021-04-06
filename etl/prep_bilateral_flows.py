@@ -496,12 +496,13 @@ def main(update_chord_diagram=True):
             .pipe(add_metadata)
             .pipe(bin_continuous_vars, ['hdi', 'gdp'])
             .pipe(data_validation)
-            .pipe(drop_bad_rows)
-            # this has to happen last!
-            .pipe(flag_reciprocals, True))
+            .pipe(drop_bad_rows))
 
     # save separate outputs
     save_output(df, 'model_input')
+    # TODO fix 'flag_recriprocals' so that I can also drop rows for certain
+    # dates and also keep it all nice in one output
+    df = flag_reciprocals(df, True)
     for col in ['recip', 'by_date_recip']:
         (df[df[col] == 1].pipe(get_net_migration)
                          .pipe(save_output, f'model_input_{col}_pairs'))
