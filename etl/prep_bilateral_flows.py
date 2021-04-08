@@ -297,29 +297,23 @@ def _get_reciprocal_pairs(df, across=False):
     return pd.DataFrame.from_records(keep_pairs, columns=id_cols)
 
 
-def flag_reciprocals(df, sensitivity=False):
-    """Add columns flagging reciprocal origin, destination pairs.
+def get_reciprocals(df, sensitivity=False, across=False):
+    """Only keep reciprocal pairs by origin, destination country.
 
     We know that not all countries of origin are represented in these data,
     since LinkedIn only shows us the top 75 origin locations per desired
-    destination, by number of users. Return dataframe with added columns
-    flagging reciprocal pairs within date of collection (by_date_recip)
-    and across all dates (recip).
+    destination, by number of users. Returns dataframe with only
+    reciprocal pairs within date of collection
+    or across all dates.
     """
     if sensitivity:
         sensitivity_reciprocal_pairs(df)
     # dropping feb 8th, march 10th to increase the number of pairs
-    # TODO YOU HAVE TO FIX THIS IF YOU WANT TO RUN 'prep_total_users_dest'
-    df = df[~(df['query_date'].isin(
-        ['2021-02-08', '2021-03-10', '2021-03-22']))]
-    across_date_df = _get_reciprocal_pairs(df, across=True)
-    by_date_df = _get_reciprocal_pairs(df)
-    merge_map={'left_only': 0, 'both': 1}
-    return df.merge(
-        across_date_df, how='left', indicator='recip'
-        ).merge(by_date_df, how='left', indicator='by_date_recip'
-        ).assign(recip=lambda x: x['recip'].map(merge_map),
-                 by_date_recip=lambda x: x['by_date_recip'].map(merge_map))
+    if across:
+        df = df[~(df['query_date'].isin(
+            ['2021-02-08', '2021-03-10', '2021-03-22']))]
+    recip_df = _get_reciprocal_pairs(df, across)
+    return recip_df.merge(df, how='left')
 
 
 def get_net_migration(df, value_col='flow', add_cols=['query_date']):
@@ -366,8 +360,7 @@ def get_variation(
     ).reset_index()
     v_df.columns = ['_'.join(x) if '' not in x else ''.join(x)
                     for x in v_df.columns]
-    add_cols = ['eu_uk'] + [f'{x}_{y}' for x in ['region', 'subregion', 'midregion']
-                for y in ['orig', 'dest']]
+    add_cols = list(set(df.columns) - set(value_cols + by_cols + [across_col]))
     return v_df.merge(df[by_cols + add_cols].drop_duplicates())
 
 
@@ -500,24 +493,18 @@ def main(update_chord_diagram=True):
 
     # save separate outputs
     save_output(df, 'model_input')
-    # TODO fix 'flag_recriprocals' so that I can also drop rows for certain
-    # dates and also keep it all nice in one output
-    df = flag_reciprocals(df, True)
-    for col in ['recip', 'by_date_recip']:
-        (df[df[col] == 1].pipe(get_net_migration)
-                         .pipe(save_output, f'model_input_{col}_pairs'))
-        if col == 'recip':
-            # variation only
-            (df[df[col] == 1].pipe(get_net_migration)
-                             .pipe(get_variation)
-                             .pipe(save_output, f'variation'))
+    (df.pipe(get_reciprocals, False, False)
+       .pipe(get_net_migration)
+       .pipe(save_output, 'model_input_by_date_recip_pairs'))
+    recip_df = (df.pipe(get_reciprocals, False, True)
+                  .pipe(get_net_migration))
+    save_output(recip_df, 'model_input_recip_pairs')
+    recip_df.pipe(get_variation).pipe(save_output, 'variance')
 
     if update_chord_diagram:
         for grp_var in ['hdi', 'gdp', 'midreg', 'subregion']:
             save_output(
-                collapse(df[df['recip'] == 1], grp_var),
-                f'chord_diagram_{grp_var}'
-            )
+                collapse(recip_df, grp_var), f'chord_diagram_{grp_var}')
 
 
 if __name__ == "__main__":
