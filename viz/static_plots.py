@@ -8,6 +8,7 @@ from matplotlib.colors import LinearSegmentedColormap
 from utils.io import get_input_dir, _get_working_dir
 from scipy import stats
 import statsmodels.stats.api as sms
+from math import e
 
 
 def get_output_dir(custom_dir=None, sub_dir=None):
@@ -20,18 +21,8 @@ def get_output_dir(custom_dir=None, sub_dir=None):
     return outdir
 
 
-def get_log_cols(continuous_cols):
-    # looked at all the variables, then picked the skewed distributions
-    log_vars = ['users', 'pop', 'gdp', 'area']
-    return [
-        f'{x}_{y}' for y in ['dest', 'orig']
-        for x in log_vars
-    # just use count of flow for now
-    ] + ['flow', 'csl', 'cnl', 'prox2'] + [x for x in continuous_cols if 'dist' in x]
-
-
 def log_tform(df, log_cols):
-    df[log_cols] = df[log_cols].apply(np.log)
+    df[[f'log_{x}' for x in log_cols]] = df[[x for x in log_cols]].apply(np.log)
     return df
 
 
@@ -45,33 +36,15 @@ def ttest(df, grp_var):
     print(cm.tconfint_diff(usevar='unequal'))
 
 
-def annotate(data, **kws):
-    ax = plt.gca()
-    ax.text(.1, .6, f"N = {len(data)}", transform=ax.transAxes)
-
-
-def violins(df, prefix, output_dir):
-    df = df.sort_values(by='query_date')
-    for metric in ['flow', 'net_flow', 'net_rate_100']:
-        ax = sns.violinplot(x="query_date", y=metric, data=df)
-        ax.set_xticklabels(df['query_date'].unique(), rotation=45)
-        plt.tight_layout()
-        plt.savefig(f"{output_dir}/{prefix}_violin_{metric}.png", dpi=300)
-        plt.close()
-
-
 def facet_hist(df, plt_vars, output_dir):
-    hist_df = df.replace({-np.inf: np.nan, np.inf: np.nan}
-        ).sort_values(by='query_date')
+    df = df[plt_vars + ['query_date', 'eu_uk']].replace(
+        {-np.inf: np.nan, np.inf: np.nan}
+    ).sort_values(by='query_date')
     for plt_var in plt_vars:
-        g = sns.FacetGrid(
-            hist_df[[plt_var, 'query_date', 'eu']].dropna(), col="query_date",
-            height=2, col_wrap=3, hue='eu'
+        ax = sns.displot(
+            df, x=plt_var, col='query_date', hue='eu_uk', kde=True,
+            height=2, col_wrap=3, facet_kws={'dropna': True}
         )
-        g.map(sns.histplot, f"{plt_var}")
-        g.set_titles(col_template="{col_name}")
-        # g.map_dataframe(annotate)
-        g.tight_layout()
         plt.savefig(f"{output_dir}/hist_{plt_var}.png", dpi=300)
         plt.close()
 
@@ -87,16 +60,18 @@ def pairplot(df, plt_vars, plt_name, output_dir):
     plt.close()
 
 
-def corr_matrix(df, plt_vars, loc_str, suffix, output_dir, type='pearson'):
-    # put the dependent variable first
-    cols = sorted(plt_vars)
-    cols.insert(0, cols.pop(cols.index('flow')))
+def corr_matrix(df, loc_str, suffix, output_dir, type='pearson'):
     if type == 'pearson':
         prefix = 'p'
         title_str = "Pearson's correlation"
+        cols = [x for x in df.columns if 'median' in x] + \
+            sorted([x for x in df.columns if 'dist' in x or 'area' in x or
+                    (('hdi' in x or 'gdp' in x) and 'bin' not in x) or 'internet' in x]) \
+            + ['csl', 'cnl', 'prox2']
     elif type == 'spearman':
         prefix = 'sp'
         title_str = "Spearman's rank"
+        cols = [x for x in df.columns if 'median' in x] + ['prox1']
     else:
         ValueError, f"Type must be spearman or pearson, but was: {type}"
     corr = df[cols].corr(type)
@@ -108,68 +83,40 @@ def corr_matrix(df, plt_vars, loc_str, suffix, output_dir, type='pearson'):
     )
     ax.set_xticklabels(cols, rotation=45, horizontalalignment='right')
     ax.set_title(f"{loc_str} {title_str} coefficients")
-    ax.add_patch(Rectangle((0, 1), 1, len(plt_vars), fill=False, edgecolor='blue', lw=3))
+    ax.add_patch(Rectangle((0, 1), 1, len(cols), fill=False, edgecolor='blue', lw=3))
     plt.tight_layout()
     plt.savefig(f"{output_dir}/{prefix}_corr_matrix_{suffix}.png", dpi=300)
     plt.close()
 
 
-def data_availability(df, outdir):
-    assert df['recip'].isin([0, 1]).values.all()
-    eu = df.query("eu_uk == 1")
-    eu_pairs_heatmap(eu, outdir)
-    def _get_num_pairs(df, col_name):
-        return (
-            df.groupby('query_date')[['iso3_orig', 'iso3_dest']].count().drop(
-            'iso3_dest', axis=1).rename(columns={'iso3_orig': col_name})
-        )
-    # I'm sure there is a nicer way to do this w/ some stack() something
-    pd.concat([
-        _get_num_pairs(df, 'pairs'),
-        _get_num_pairs(df[df['by_date_recip'] == 1], 'pairs (by date)'),
-        _get_num_pairs(df[df['recip'] == 1], 'pairs (across dates)'),
-        _get_num_pairs(eu, 'EU +UK pairs'),
-        _get_num_pairs(eu[eu['by_date_recip'] == 1], 'EU +UK pairs (by date)'),
-        _get_num_pairs(eu[eu['recip'] == 1], 'EU +UK pairs (across dates)')
-    ], axis=1).to_csv(f'{outdir}/reciprocal_pairs.csv')
+def data_availability(outdir):
+    def make_it_nice(df, pair_type, loc_level):
+        return df[['query_date', 'flow']].assign(
+            **{'Pair Type': pair_type, 'Locations': loc_level}
+        ).rename(columns={'query_date': 'Date'})
+    df_list = []
+    recip_str_dict = {'': 'all', '_recip_pairs': 'reciprocal pairs (across dates)',
+                      '_by_date_recip_pairs': 'reciprocal pairs(by date)'}
+    for suffix, str_title in recip_str_dict.items():
+        for loc_level in ['EU+UK', 'Global']:
+            if loc_level == 'EU+UK':
+                df = pd.read_csv(f"{get_input_dir()}/model_input{suffix}.csv"
+                    ).query('eu_uk == 1')
+                df_list.append(make_it_nice(df, str_title, loc_level))
+            else:
+                df = pd.read_csv(f"{get_input_dir()}/model_input{suffix}.csv")
+                df_list.append(make_it_nice(df, str_title, loc_level))
+    pd.concat(df_list).pivot_table(
+        index='Date', columns=['Locations', 'Pair Type'],
+        values='flow', aggfunc='count'
+    ).to_csv(f'{outdir}/pairs_table.csv')
 
 
-def eu_pairs_heatmap(df, outdir):
-    """Save heatmap showing for which countries we have reciprocal pairs."""
-    recip_pairs = df[
-        ['country_orig', 'country_dest', 'recip']
-    ].drop_duplicates().rename(
-        columns={'country_orig': 'Origin Country',
-                 'country_dest': 'Destination Country'}
-    ).pivot_table('recip', 'Origin Country', 'Destination Country', fill_value=0)
-    # create figure
-    plt.figure(figsize=(10,10))
-    # change colors to be binary, not continuous
-    colors = ["lightgray", "salmon"]
-    cmap = LinearSegmentedColormap.from_list('Custom', colors, len(colors))
-    # make plot
-    ax = sns.heatmap(recip_pairs, square=True, cmap=cmap, linewidths=.5,
-                     cbar_kws={"shrink": .5})
-    # Let the horizontal axes labeling appear on top.
-    ax.xaxis.set_label_position('top')
-    ax.tick_params(top=True, bottom=False,
-                   labeltop=True, labelbottom=False)
-    # Rotate the tick labels and set their alignment.
-    plt.setp(ax.get_xticklabels(), rotation=-30, ha="right",
-             rotation_mode="anchor")
-    # set colorbar labels
-    colorbar = ax.collections[0].colorbar
-    colorbar.set_ticks([0.25,0.75])
-    colorbar.set_ticklabels(['excluded', 'included'])
-    plt.tight_layout()
-    plt.savefig(f"{outdir}/heatmap_recip_pairs.png", dpi=300)
-    plt.close()
-
-
-def variation_heatmap(outdir):
-    df = pd.read_csv(f"{get_input_dir()}/variation.csv").assign(
+def variation_heatmap(df, outdir):
+    df = df.assign(
         flow_variation_pct=lambda x: x['flow_variation'] * 100
-    ).query("eu_uk == 1")
+    )
+    num_dates = df['flow_count'].iloc[0]
     heatmap_kws = {
         'square': True, 'linewidths': .5, 'annot': True,
         'fmt': '.1g', 'cbar_kws': {"shrink": .5},
@@ -177,7 +124,7 @@ def variation_heatmap(outdir):
     }
     for metric in ['flow_variation_pct', 'flow_median']:
         if metric == 'flow_variation_pct':
-            metric_str = 'Coefficient of Variation (%)'
+            metric_str = 'Coefficient of Variance (%)'
         if metric == 'flow_median':
             metric_str = 'Median'
             heatmap_kws.update({'annot': None})
@@ -194,7 +141,8 @@ def variation_heatmap(outdir):
         # Let the horizontal axis labeling appear on top
         ax.xaxis.set_label_position('top')
         ax.tick_params(top=True, bottom=False, labeltop=True, labelbottom=False)
-        ax.set_title(f'{metric_str} across 11 collection dates', fontsize=15)
+        ax.set_title(
+            f'{metric_str} across {num_dates} collection dates', fontsize=15)
         # add '%' to colorbar for CV %
         if metric == 'flow_variation_pct':
             cb = ax.collections[0].colorbar
@@ -257,37 +205,48 @@ def make_line_plt(data, value, title_str, suffix, outdir):
     plt.close()
 
 
-def main(save_hists=False, save_heatmaps=False, save_pairplots=False, save_violins=False):
-    for col in ['recip', 'by_date_recip']:
+def main(save_hists=False, save_heatmaps=True, save_pairplots=False):
+    # TODO feeling a plotting class kind of thing 
+    categ_cols = ['contig', 'comlang_ethno', 'colony', 'comcol',
+                'curcol', 'col45', 'col', 'smctry', 'prox1']
+    cont_cols = [
+        'flow', 'net_flow', 'net_rate_100', 'users_orig', 'users_dest',
+        'pop_orig', 'gdp_orig', 'hdi_orig', 'pop_dest', 'gdp_dest', 'hdi_dest',
+        'area_orig', 'area_dest', 'internet_orig', 'internet_dest',
+        'dist_biggest_cities', 'dist_pop_weighted', 'dist_unweighted',
+        'csl', 'cnl', 'prox2'
+    ]
+    log_cols = \
+        [f'{x}_{y}' for y in ['dest', 'orig']
+            for x in ['users', 'pop', 'gdp', 'area']] \
+    + ['flow', 'prox2', 'cnl', 'csl'] + \
+        [x for x in cont_cols if 'dist' in x]
+    if save_heatmaps:
+        df = pd.read_csv(f'{get_input_dir()}/variance.csv')
+        outdir = get_output_dir(sub_dir='recip')
+        for loc in ['EU+UK', 'Global']:
+            if loc == 'EU+UK':
+                data = df[df['eu_uk'] == 1]
+                variation_heatmap(data, outdir)
+            else:
+                data = df.copy()
+            corr_matrix(data, loc, loc.replace('+', '-').lower(), outdir)
+            corr_matrix(data, loc, loc.lower(), outdir, type='spearman')
+    for col in [None, 'recip', 'by_date_recip']:
         outdir = get_output_dir(sub_dir=col)
-        df = pd.read_csv(f"{get_input_dir()}/model_input_{col}_pairs.csv", low_memory=False)
-        categorical_cols = ['contig', 'comlang_ethno', 'colony', 'comcol',
-                            'curcol', 'col45', 'col', 'smctry']
-        cont_cols = [
-            'flow', 'net_flow', 'net_rate_100', 'users_orig', 'users_dest',
-            'pop_orig', 'gdp_orig', 'hdi_orig', 'pop_dest', 'gdp_dest', 'hdi_dest',
-            'area_orig', 'area_dest', 'internet_orig', 'internet_dest',
-            'dist_biggest_cities', 'dist_pop_weighted', 'dist_unweighted',
-            'csl', 'cnl', 'prox2'
-        ]
-        log_cols = get_log_cols(cont_cols)
-        df = log_tform(df, log_cols)
-        eu = df[df['eu'] == 1]
+        if col is not None:
+            df = pd.read_csv(f"{get_input_dir()}/model_input_{col}_pairs.csv")
+            df = log_tform(df, log_cols + ['net_flow', 'net_rate_100'])
+        else:
+            df = pd.read_csv(f"{get_input_dir()}/model_input.csv")
+            df = log_tform(df, log_cols)
+        eu = df[df['eu_uk'] == 1]
         if save_hists:
-            # histograms of each variable, with facets for collection dates
-            facet_hist(df, log_cols + categorical_cols, outdir)
-        for string, data in {'EU': eu, 'Global': df}.items():
-            if save_violins:
-                violins(data, string, outdir)
-            if save_heatmaps:
-                corr_matrix(data, cont_cols, string, string.lower(), outdir)
-                # add prox1-- this variable is sort of categorical?
-                corr_matrix(
-                    data, cont_cols + ['prox1'], string, string.lower(), outdir,
-                    type='spearman')
+            facet_hist(df, [x for x in df.columns if 'log' in x], outdir)
+        for string, data in {'EU+UK': eu, 'Global': df}.items():
             if save_pairplots:
                 # columns chosen manually by inspection of previous plots
-                if string == 'EU':
+                if string == 'EU+UK':
                     cols = ['cnl', 'gdp_dest', 'hdi_dest', 'internet_dest', 'prox1',
                             'users_orig', 'users_dest', 'pop_orig', 'pop_dest']
                 else:
@@ -298,15 +257,10 @@ def main(save_hists=False, save_heatmaps=False, save_pairplots=False, save_violi
         #     for x in categorical_cols:
         #         print(f'Global dataset:\n{ttest(df, x)}')
         #         print(f'EU dataset:\n{ttest(eu, x)}')
-
-    # save another thing
-    # data_availability(
-    #     pd.read_csv(f"{get_input_dir()}/model_input.csv", low_memory=False),
-    #     get_output_dir(sub_dir='recip'))
-    # some more things
-    variation_heatmap(get_output_dir(sub_dir='recip'))
-    # TODO this line plot is not quite right
-    # plt_over_time(get_output_dir())
+    # # save another thing
+    # data_availability(get_output_dir())
+    # # TODO this line plot is not quite right
+    # # plt_over_time(get_output_dir())
 
 
 if __name__ == "__main__":
