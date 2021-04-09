@@ -309,9 +309,9 @@ def get_reciprocals(df, sensitivity=False, across=False):
     if sensitivity:
         sensitivity_reciprocal_pairs(df)
     # dropping feb 8th, march 10th to increase the number of pairs
-    if across:
-        df = df[~(df['query_date'].isin(
-            ['2021-02-08', '2021-03-10', '2021-03-22']))]
+    # if across:
+    #     df = df[~(df['query_date'].isin(
+    #         ['2021-02-08', '2021-03-10', '2021-03-22']))]
     recip_df = _get_reciprocal_pairs(df, across)
     return recip_df.merge(df, how='left')
 

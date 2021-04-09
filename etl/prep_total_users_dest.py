@@ -10,9 +10,9 @@ def prep_total_users():
     df = pd.read_csv(f'{get_input_dir()}/model_input.csv')
     keep_cols = [x for x in df.columns if '_dest' in x] + ['query_date']
     eu = prep_eu_states()
-    eu_isos = eu[eu['eu_uk'] == 1].index.values
-    df['eu_uk'] = df['iso3_dest'].apply(lambda x: 1 if x in eu_isos else 0)
-    return df[keep_cols + ['eu_uk']].drop_duplicates().assign(
+    eu_isos = eu[eu['eu_plus'] == 1].index.values
+    df['eu_plus'] = df['iso3_dest'].apply(lambda x: 1 if x in eu_isos else 0)
+    return df[keep_cols + ['eu_plus']].drop_duplicates().assign(
         query_datetime=pd.to_datetime(df['query_date'])
     ).sort_values(by='query_datetime')
 
