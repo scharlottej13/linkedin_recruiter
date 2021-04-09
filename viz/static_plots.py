@@ -37,12 +37,12 @@ def ttest(df, grp_var):
 
 
 def facet_hist(df, plt_vars, output_dir):
-    df = df[plt_vars + ['query_date', 'eu_uk']].replace(
+    df = df[plt_vars + ['query_date', 'eu_plus']].replace(
         {-np.inf: np.nan, np.inf: np.nan}
     ).sort_values(by='query_date')
     for plt_var in plt_vars:
         ax = sns.displot(
-            df, x=plt_var, col='query_date', hue='eu_uk', kde=True,
+            df, x=plt_var, col='query_date', hue='eu_plus', kde=True,
             height=2, col_wrap=3, facet_kws={'dropna': True}
         )
         plt.savefig(f"{output_dir}/hist_{plt_var}.png", dpi=300)
@@ -64,7 +64,7 @@ def corr_matrix(df, loc_str, suffix, output_dir, type='pearson'):
     if type == 'pearson':
         prefix = 'p'
         title_str = "Pearson's correlation"
-        cols = [x for x in df.columns if 'median' in x] + \
+        cols = [x for x in df.columns if 'median' in x] + ['flow_variation'] + \
             sorted([x for x in df.columns if 'dist' in x or 'area' in x or
                     (('hdi' in x or 'gdp' in x) and 'bin' not in x) or 'internet' in x]) \
             + ['csl', 'cnl', 'prox2']
@@ -101,7 +101,7 @@ def data_availability(outdir):
         for loc_level in ['EU+UK', 'Global']:
             if loc_level == 'EU+UK':
                 df = pd.read_csv(f"{get_input_dir()}/model_input{suffix}.csv"
-                    ).query('eu_uk == 1')
+                    ).query('eu_plus == 1')
                 df_list.append(make_it_nice(df, str_title, loc_level))
             else:
                 df = pd.read_csv(f"{get_input_dir()}/model_input{suffix}.csv")
@@ -170,7 +170,7 @@ def plt_over_time(outdir):
         n = 15
         for loc in ['eu', 'top']:
             if loc == 'eu':
-                data = df[df['eu_uk'] == 1]
+                data = df[df['eu_plus'] == 1]
                 loc_str = 'EU + UK'
             if loc == 'top':
                 data = df[
@@ -205,7 +205,9 @@ def make_line_plt(data, value, title_str, suffix, outdir):
     plt.close()
 
 
-def main(save_hists=False, save_heatmaps=True, save_pairplots=False):
+def main(save_hists=True, save_heatmaps=True, save_pairplots=False):
+    # save this first, shows what data went into each plot
+    data_availability(get_output_dir())
     # TODO feeling a plotting class kind of thing 
     categ_cols = ['contig', 'comlang_ethno', 'colony', 'comcol',
                 'curcol', 'col45', 'col', 'smctry', 'prox1']
@@ -226,11 +228,11 @@ def main(save_hists=False, save_heatmaps=True, save_pairplots=False):
         outdir = get_output_dir(sub_dir='recip')
         for loc in ['EU+UK', 'Global']:
             if loc == 'EU+UK':
-                data = df[df['eu_uk'] == 1]
+                data = df[df['eu_plus'] == 1]
                 variation_heatmap(data, outdir)
             else:
                 data = df.copy()
-            corr_matrix(data, loc, loc.replace('+', '-').lower(), outdir)
+            corr_matrix(data, loc, loc.lower(), outdir)
             corr_matrix(data, loc, loc.lower(), outdir, type='spearman')
     for col in [None, 'recip', 'by_date_recip']:
         outdir = get_output_dir(sub_dir=col)
@@ -240,25 +242,19 @@ def main(save_hists=False, save_heatmaps=True, save_pairplots=False):
         else:
             df = pd.read_csv(f"{get_input_dir()}/model_input.csv")
             df = log_tform(df, log_cols)
-        eu = df[df['eu_uk'] == 1]
+        eu = df[df['eu_plus'] == 1]
         if save_hists:
             facet_hist(df, [x for x in df.columns if 'log' in x], outdir)
         for string, data in {'EU+UK': eu, 'Global': df}.items():
             if save_pairplots:
                 # columns chosen manually by inspection of previous plots
-                if string == 'EU+UK':
-                    cols = ['cnl', 'gdp_dest', 'hdi_dest', 'internet_dest', 'prox1',
-                            'users_orig', 'users_dest', 'pop_orig', 'pop_dest']
-                else:
-                    cols = ['users_dest', 'users_orig', 'gdp_dest', 'gdp_orig',
-                            'hdi_dest', 'hdi_orig', 'internet_orig', 'internet_dest']
+                cols = ['gdp_dest', 'hdi_dest',
+                        'internet_dest', 'prox1', 'prox2']
                 pairplot(data, cols, string, outdir)
         # if col == 'recip':
         #     for x in categorical_cols:
         #         print(f'Global dataset:\n{ttest(df, x)}')
         #         print(f'EU dataset:\n{ttest(eu, x)}')
-    # # save another thing
-    # data_availability(get_output_dir())
     # # TODO this line plot is not quite right
     # # plt_over_time(get_output_dir())
 
