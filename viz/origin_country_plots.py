@@ -1,10 +1,13 @@
-from os import path, mkdir
-from utils.io import get_input_dir, _get_working_dir
-import pandas as pd
-import numpy as np
-import seaborn as sns
-import matplotlib.pyplot as plt
+import argparse
 import sys
+from collections import defaultdict
+from os import mkdir, path
+
+import matplotlib.pyplot as plt
+import numpy as np
+import pandas as pd
+import seaborn as sns
+from utils.io import _get_working_dir, get_input_dir
 
 
 def get_output_dir(custom_dir=None, sub_dir=None):
@@ -18,46 +21,40 @@ def get_output_dir(custom_dir=None, sub_dir=None):
     return outdir
 
 
-def get_avg_prop(df):
+def get_avg(df, x, metric):
     return df.drop_duplicates(
-        ['query_date', 'country_orig']
-    )['prop_orig'].mean()
+        ['query_date', f'country_{x}'])[f'{metric}_{x}'].mean()
 
 
-def get_avg_n(df):
-    return df.drop_duplicates(
-        ['query_date', 'country_orig']
-    )['users_orig'].mean()
-
-
-def check_cutoffs(df):
+def check_cutoffs(df, y):
     # check to make sure that countries
     # don't appear twice across different plots
     for idx in range(1, df.cutoff.max()):
         overlap = \
-            set(df.query(f'cutoff == {idx - 1}')['country_dest']) \
-            & set(df.query(f'cutoff == {idx}')['country_dest'])
+            set(df.query(f'cutoff == {idx - 1}')[f'country_{y}']) \
+            & set(df.query(f'cutoff == {idx}')[f'country_{y}'])
         if len(overlap) != 0:
             # this could be better & pick an index based on where more
             # points are already
-           df.loc[df['country_dest'].isin(overlap), 'cutoff'] = idx - 1
+           df.loc[df[f'country_{y}'].isin(overlap), 'cutoff'] = idx - 1
     return df
 
 
-def line_plt(df, iso, avg_prop, avg_n, split=None):
+def line_plt(df, iso, avg_prop, avg_n, x, y, split=None):
     fig, ax = plt.subplots(figsize=(10, 5))
     sns.lineplot(
         'query_date',
         'prop',
-        hue='country_dest',
-        style='country_dest',
+        hue=f'country_{y}',
+        style=f'country_{y}',
         marker='o',
         data=df,
         ax=ax
     )
     # make adjustments
-    ax.set_xticklabels(df['query_date'].unique(),
-                       rotation=45, horizontalalignment='right')
+    ax.set_xticklabels(
+        df['query_date'].unique(),
+        rotation=45, horizontalalignment='right')
     ax.set_xlabel('Date of Data Collection')
     ax.set_ylabel('Percent Open to Relocation')
     if not split:
@@ -73,14 +70,21 @@ def line_plt(df, iso, avg_prop, avg_n, split=None):
         suffix = f'time_series_split_{split}'
         ncol = 1
         ax.set_yticklabels([f'{x:.3%}' for x in ax.get_yticks().tolist()])
-    ax.legend(bbox_to_anchor=(1.05, 1), loc=2,
-              title='Destination Country', frameon=False, ncol=ncol)
-    country = df.country_orig.values[0]
+    # ok now format some text
+    country = df[f'country_{x}'].values[0]
+    if x == 'orig':
+        legend = 'Destination Country'
+        title = f'LinkedIn Users in {country} Open to Relocation'
+    else:
+        legend = 'Origin Country'
+        title = f'LinkedIn Users Open to Relocating to {country}'
+    ax.legend(
+        bbox_to_anchor=(1.05, 1), loc=2,
+        title=legend, frameon=False, ncol=ncol)
     # main title
     ax.text(
-        x=0.5, y=1.1, s=f'LinkedIn Users in {country} Open to Relocation',
-        fontsize=12, weight='bold', ha='center', va='bottom',
-        transform=ax.transAxes
+        x=0.5, y=1.1, s=title, transform=ax.transAxes,
+        fontsize=12, weight='bold', ha='center', va='bottom'
     )
     # subtitle
     ax.text(
@@ -90,36 +94,58 @@ def line_plt(df, iso, avg_prop, avg_n, split=None):
     )
     fig.tight_layout()
     # plt.show()
-    plt.savefig(f'{get_output_dir(sub_dir=iso)}/{iso}_{suffix}.png', dpi=300)
+    plt.savefig(f'{get_output_dir(sub_dir=iso)}/{iso}_{x}_{suffix}.png', dpi=300)
     plt.close()
 
 
-if __name__ == "__main__":
-    iso = sys.argv[1]
+def prep_data(iso, x, y):
     df = pd.read_csv(f"{get_input_dir()}/model_input.csv")
+    # only keep countries with complete time series
     keep_isos = list(
-        df.query(f"iso3_orig == '{iso}'").groupby(
-            'iso3_dest'
-        )['flow'].count().iloc[lambda x: x.values == 14].index
-    )
-    iso_bins_dict = {
+        df.query(f"iso3_{x} == '{iso}'").groupby(
+            # TODO this should be dynamic not hard coded
+            f'iso3_{y}')['flow'].count().iloc[lambda x: x.values == 14].index)
+    # splitting the subplots is a bit manual, try for 5 splits first
+    bins_dict = defaultdict(lambda: 5)
+    bins_dict.update({
         'pol': [0, .0001, .000217, .0006, .001, 1],
         'ita': [0, .00002, .00004, .0014, 1],
         'deu': [0, .00003, .00004, .00008, .0015, 1]
-    }
-    df = df.query(f"iso3_orig == '{iso}' & iso3_dest in {keep_isos}").assign(
-        prop=df['flow'] / df['users_orig'],
-        cutoff=lambda x: pd.cut(
-            x['prop'], iso_bins_dict[iso], labels=False, right=False)
+    })
+    return df.query(f"iso3_{x} == '{iso}' & iso3_{y} in {keep_isos}").assign(
+        prop=df['flow'] / df[f'users_{x}'],
+        cutoff=lambda x: pd.qcut(
+            x['prop'], bins_dict[iso], labels=False
+        )
     ).sort_values(by=['query_date', 'prop'], ascending=[True, False])
-    prop = get_avg_prop(df)
-    n = get_avg_n(df)
-    line_plt(df, iso, prop, n)
+
+
+def main(iso, dest):
+    if not dest:
+        x = 'orig'
+        y = 'dest'
+    else:
+        x = 'dest'
+        y = 'orig'
+    df = prep_data(iso, x, y)
+    prop = get_avg(df, x, 'prop')
+    n = get_avg(df, x, 'users')
+    line_plt(df, iso, prop, n, x, y)
     logdf = df.copy()
     logdf['prop'] = np.log10(logdf['prop'])
-    line_plt(logdf, iso, prop, n, split='log')
-    df = check_cutoffs(df)
+    line_plt(logdf, iso, prop, n, x, y, split='log')
+    df = check_cutoffs(df, y)
     num_cols = len(df.cutoff.unique())
     for idx in range(0, num_cols):
-        line_plt(df[df['cutoff'] == idx], iso, prop, n, split=idx + 1)
+        line_plt(df[df['cutoff'] == idx], iso, prop, n, x, y, split=idx + 1)
 
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument('iso3', help='country code', type=str.lower)
+    parser.add_argument(
+        '-dest', '--destination', help='iso3 will be destination instead',
+        action='store_true'
+    )
+    args = parser.parse_args()
+    main(args.iso3, args.destination)
