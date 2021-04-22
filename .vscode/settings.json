@@ -1,8 +1,13 @@
 {
-    "python.linting.pylintEnabled": false,
+    "python.linting.pylintEnabled": true,
     "python.linting.flake8Enabled": true,
     "python.linting.enabled": true,
     "python.pythonPath": "/Users/scharlottej13/anaconda3/envs/linkedin_recruiter/bin/python",
+    "python.formatting.autopep8Args": [
+        "--max-line-length",
+        "80",
+        "--aggressive"
+    ],
 
     "[r]": {
         "editor.formatOnSave": false
