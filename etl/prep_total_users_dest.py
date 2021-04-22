@@ -1,7 +1,8 @@
 import numpy as np
 import pandas as pd
+import xlsxwriter
 from os import pipe
-from utils.io import get_input_dir, _get_working_dir, save_output
+from utils.io import get_input_dir, get_output_dir, _get_working_dir, save_output
 from etl.prep_bilateral_flows import prep_eu_states
 
 
@@ -30,8 +31,11 @@ def fix_dups(df, id_cols=['query_date', 'country_dest'], value_col='goers'):
 def drop_bad_rows(df):
     # there are some -1 values, drop these
     return df[(df['goers'] > 0) &
-        ~((df['query_date'] == '2020-10-08') &
-          (df['country_dest'] == 'Central African Republic'))]
+        ~((
+            (df['query_date'] == '2020-10-08') &
+            (df['country_dest'] == 'Central African Republic')
+        ) | (df['country_dest'] == 'Cyprus UN Neutral Zone'))
+    ]
 
 
 def prep_goers():
@@ -73,10 +77,30 @@ def merge_goers_total(goers_df, users_df):
                 ratio=lambda x: x['goers'] / x['users_dest'])
 
 
+def get_rank_over_time(df, value, metric_name):
+    """return rank of destination countries."""
+    return (df
+    .assign(
+        rank=df.groupby('date_key')[f'{value}'].rank(
+            ascending=False, method='first', na_option='bottom'))
+    .pivot(index='rank', columns='date_key', values=['country_dest', f'{value}'])
+    .sort_index(axis=1, level=[1, 0])
+    .rename(columns={f'{value}': f'{metric_name}'}))
+
+
 def main():
     goers_df = prep_goers()
     users_df = prep_total_users()
-    save_output(merge_goers_total(goers_df, users_df), 'goers')
+    df = merge_goers_total(goers_df, users_df)
+    save_output(df, 'goers')
+    writer = pd.ExcelWriter(f'{get_output_dir()}/destination_ranks.xlsx', engine='xlsxwriter')
+    get_rank_over_time(df, 'goers', 'number').to_excel(writer, sheet_name='num')
+    get_rank_over_time(df, 'ratio', 'proportion').to_excel(writer, sheet_name='prop')
+    get_rank_over_time(df.query("eu_plus == 1"), 'goers', 'number').to_excel(
+        writer, sheet_name='eu_num')
+    get_rank_over_time(df.query("eu_plus == 1"), 'ratio', 'proportion').to_excel(
+        writer, sheet_name='eu_prop')
+    writer.save()
 
 
 if __name__ == "__main__":

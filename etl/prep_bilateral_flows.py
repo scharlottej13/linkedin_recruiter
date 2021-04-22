@@ -7,10 +7,10 @@ from os import listdir, path, pipe
 import numpy as np
 import pandas as pd
 from scipy.stats import variation as cv, sem
-from pycountry import countries, historic_countries
+from pycountry import countries
 
 from utils.io  import _get_working_dir, get_input_dir, save_output
-from utils.misc import no_duplicates, test_no_duplicates
+from utils.misc import no_duplicates, test_no_duplicates, iso2_to_iso3, get_location_hierarchy
 
 
 def get_latest_data():
@@ -72,25 +72,6 @@ def prep_country_area():
     ).set_index('iso3')['value'].to_dict()
 
 
-def _get_iso3(x):
-    """Helper function to get iso3 from iso2."""
-    if x:
-        country_info = countries.get(alpha_2=x)
-        if country_info:
-            iso3 = country_info.alpha_3
-        elif historic_countries.get(alpha_2=x):
-            iso3 = historic_countries.get(alpha_2=x).alpha_3
-        # Kosovo is not UN official
-        elif x == 'XK':
-            iso3 = 'XKX'
-        else:
-            KeyError, f'iso3 for {x} not found'
-        return iso3.lower()
-    # sometimes x is Null to begin with, this f'n doesn't need to care
-    else:
-        return x
-
-
 def check_geo(cepii, maciej):
     """Check some assumptions."""
     assert set(cepii['iso_o']) == set(cepii['iso_d'])
@@ -137,7 +118,7 @@ def prep_geo():
     ).reset_index().replace({'MIC': 'FM', 'UK': 'GB'})
     # create dictionary of {iso2: iso3}, faster than looping through whole df?
     iso2s = maciej['origin2'].unique()
-    iso2_3 = dict(zip(iso2s, [_get_iso3(x) for x in iso2s]))
+    iso2_3 = dict(zip(iso2s, [iso2_to_iso3(x) for x in iso2s]))
     # map iso2 to iso3
     maciej[['origin2', 'dest2']] = maciej[['origin2', 'dest2']].apply(
         lambda x: x.map(iso2_3))
@@ -211,22 +192,8 @@ def prep_eu_states():
 
 
 def merge_region_subregion(df):
-    """Add columns for country groups using UNSD or Abel/Cohen methods.
-    UNSD: https://unstats.un.org/unsd/methodology/m49/overview/
-    Abel/Cohen: https://www.nature.com/articles/s41597-019-0089-3
-    """
-    loc_df = pd.read_csv(
-        path.join(get_input_dir(), 'UNSD-methodology.csv'), usecols=[3, 5, 11],
-        header=0, names=['region', 'subregion', 'iso3']
-    ).append(pd.DataFrame(
-        # manually fill missing entries
-        {'region': ['Asia', 'Oceania'],
-         'subregion': ['Eastern Asia', 'Micronesia'],
-         'iso3': ['twn', 'nru']}), ignore_index=True)
-    # paper from Abel & Cohen has different groups, call them "midregions"
-    loc_df = loc_df.assign(iso3=loc_df['iso3'].str.lower()).merge(
-        pd.read_csv(path.join(get_input_dir(), 'abel_regions.csv')),
-        how='left').set_index('iso3')
+    """Add columns for country groups using UNSD or Abel/Cohen methods."""
+    loc_df = get_location_hierarchy()
     df = df.merge(
         loc_df, how='left', left_on='iso3_orig', right_index=True).merge(
             loc_df, how='left', left_on='iso3_dest', right_index=True,
@@ -421,7 +388,7 @@ def fill_missing_borders(df):
         url, na_values=[''], keep_default_na=False,
         usecols=['country_code', 'country_border_code'],
         converters=dict(zip(
-            ['country_code', 'country_border_code'], [lambda x: _get_iso3(x)]*2
+            ['country_code', 'country_border_code'], [lambda x: iso2_to_iso3(x)]*2
         ))
     ).rename(columns={'country_code': 'iso3_orig', 'country_border_code': 'iso3_dest'})
     borderless = borders.loc[borders['iso3_dest'].isnull(), 'iso3_orig'].unique()
