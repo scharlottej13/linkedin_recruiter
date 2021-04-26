@@ -2,7 +2,7 @@
 from os import mkdir, path
 from datetime import datetime
 
-#TODO it'd be nice to have a helper function for interactive data exploration
+# TODO it'd be nice to have a helper function for interactive data exploration
 # that dropped the reciprocal pairs when you don't need to see them
 # eg seeing A -> B and B -> A not necessary
 
@@ -24,22 +24,23 @@ def _get_working_dir(custom_dir):
 def get_input_dir(custom_dir=None):
     # TODO read in filepaths from config, then set in init
     # don't love how this f'n is called all the time
-    return path.join(_get_working_dir(custom_dir), 'inputs')
+    return path.join(_get_working_dir(custom_dir), 'raw-data')
 
 
 def get_output_dir(custom_dir=None):
     # TODO read in filepaths from config, then set in init
     # don't love how this f'n is called all the time
-    return path.join(_get_working_dir(custom_dir), 'outputs')
+    return path.join(_get_working_dir(custom_dir), 'processed-data')
 
 
 def save_output(df, filename, archive=True):
     """Auto archive output saving."""
-    active_dir = get_input_dir()
+    active_dir = get_output_dir()
     df.to_csv(path.join(active_dir, f'{filename}.csv'), index=False)
     if archive:
         today = datetime.now().date()
         archive_dir = path.join(active_dir, '_archive')
         if not path.exists(archive_dir):
             mkdir(archive_dir)
-        df.to_csv(path.join(archive_dir, f'{filename}_{today}.csv'), index=False)
+        df.to_csv(
+            path.join(archive_dir, f'{filename}_{today}.csv'), index=False)

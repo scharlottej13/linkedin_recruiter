@@ -1,6 +1,8 @@
 """Miscellaneous"""
+from os import path
 import pandas as pd
 from pycountry import countries, historic_countries
+from utils.io import get_input_dir
 
 
 def get_location_hierarchy():
