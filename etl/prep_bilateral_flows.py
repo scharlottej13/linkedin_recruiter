@@ -9,8 +9,9 @@ import pandas as pd
 from scipy.stats import variation as cv, sem
 from pycountry import countries
 
-from utils.io  import _get_working_dir, get_input_dir, save_output
-from utils.misc import no_duplicates, test_no_duplicates, iso2_to_iso3, get_location_hierarchy
+from utils.io import get_input_dir, save_output
+from utils.misc import (no_duplicates, test_no_duplicates,
+                        iso2_to_iso3, get_location_hierarchy)
 
 
 def get_latest_data():
@@ -24,15 +25,21 @@ def get_latest_data():
         raise NotImplementedError
 
 
-def standardize_col_names(df):
+def read_data():
+    # first grab the column names we want
+    keep_cols = set(pd.read_csv(
+        path.join(get_input_dir(), get_latest_data()),
+        nrows=0).columns) - set(['Unnamed: 0', 'normalized1',
+                                 'normalized2', 'response'])
+    df = pd.read_csv(path.join(get_input_dir(), get_latest_data()),
+                     usecols=keep_cols)
     replace_dict = {
         '_x': '_orig', '_y': '_dest', '_from': '_orig', 'population': 'pop',
         '_to': '_dest', 'linkedin': '', 'countrycode': 'iso3',
         'number_people_who_indicated': 'flow', 'max': ''}
     df.columns = df.columns.to_series().replace(replace_dict, regex=True)
-    drop = ['Unnamed: 0', 'query_time_round', 'normalized1', 'normalized2']
     return (df.assign(query_date=df['query_time_round'].str[:-9])
-              .drop(drop, axis=1, errors='ignore'))
+              .drop(['query_time_round'], axis=1, errors='ignore'))
 
 
 def reshape_long_wide(df, wide_col='query_info',
@@ -49,9 +56,9 @@ def reshape_long_wide(df, wide_col='query_info',
             set([x for x in df.columns]) - set(value_cols + [wide_col])
         )
         df = df.pivot_table(index=idx_cols, columns=wide_col,
-                    values=value_cols).reset_index()
+                            values=value_cols).reset_index()
         df.columns = ['_'.join(x) if '' not in x else ''.join(x)
-                    for x in df.columns]
+                      for x in df.columns]
         # query_info column takes two values: 'r4' and 'r6_remote'
         # r4 is those open to relocating, r6 is AND open to remote work
         df.columns = df.columns.to_series().replace({'_r[46]': ''}, regex=True)
@@ -102,7 +109,7 @@ def prep_geo():
     ^ most similar to distwces
     dist_unweighted: average distance between (?) (not population weighted)
     """
-    cepii =  pd.read_excel(
+    cepii = pd.read_excel(
         path.join(get_input_dir(), 'CEPII_distance/dist_cepii.xls'),
         converters=dict(zip(['iso_o', 'iso_d'], [lambda x: str.lower(x)]*2)))
     maciej = pd.read_csv(
@@ -110,11 +117,11 @@ def prep_geo():
         keep_default_na=False,
         # NA iso2 in origin/dest columns is not a null value, but Namibia
         na_values=dict(zip(['variable', 'src_ref_db', 'values'], ['NA']))
-    # drop cepii calculated values
+        # drop cepii calculated values
     ).query("src_ref_db == 'maps{R}&geosphere{R}'").pivot(
         # reshape from long to wide on distance variable
         index=['origin2', 'dest2'], columns='variable', values='values'
-    # fix micronesia, and united kingdom, checked geo_distances.csv
+        # fix micronesia, and united kingdom, checked geo_distances.csv
     ).reset_index().replace({'MIC': 'FM', 'UK': 'GB'})
     # create dictionary of {iso2: iso3}, faster than looping through whole df?
     iso2s = maciej['origin2'].unique()
@@ -133,7 +140,7 @@ def prep_geo():
          'dist_biggest_cities': geo_df['distwces'],
          'dist_unweighted': geo_df['dist']}
     ).drop(['comlang_off', 'dist', 'distcap', 'distw', 'distwces'], axis=1
-    ).set_index(['iso_o', 'iso_d'])
+           ).set_index(['iso_o', 'iso_d'])
 
 
 def prep_language():
@@ -158,7 +165,7 @@ def prep_language():
         columns=['iso_o', 'iso_d', 'col', 'csl', 'cnl', 'prox1', 'prox2']
     ).assign(iso_o=lambda x: x['iso_o'].str.lower(),
              iso_d=lambda x: x['iso_d'].str.lower()
-    ).set_index(['iso_o', 'iso_d'])
+             ).set_index(['iso_o', 'iso_d'])
 
 
 def prep_internet_usage():
@@ -239,12 +246,13 @@ def sensitivity_reciprocal_pairs(df, across=True):
                   {len(recip_df) - baseline}')
 
 
-
-def _get_reciprocal_pairs(df, across=False):
+def _get_reciprocal_pairs(df, across=False, drop_dates=None):
     # TODO I think this could be faster
     # https://realpython.com/numpy-array-programming/
     id_cols = ['iso3_orig', 'iso3_dest', 'query_date']
     Countrypair = namedtuple('Countrypair', ['orig', 'dest'])
+    if across & (drop_dates is not None):
+        df = df[~(df['query_date'].isin(drop_dates))]
     df_pairs = df[id_cols].set_index('query_date').apply(
         Countrypair._make, 1).groupby(level=0).agg(
             lambda x: list(x.values)).to_dict()
@@ -255,16 +263,18 @@ def _get_reciprocal_pairs(df, across=False):
     }
     if across:
         keep_pairs = list(set.intersection(*map(set, date_pairs.values())))
+        # for hack later, instead of dropping date it should be 'expanded'
         id_cols.remove('query_date')
     else:
         keep_pairs = []
         for date, pairs in date_pairs.items():
             for pair in pairs:
                 keep_pairs.append(tuple([pair[0], pair[1], date]))
-    return pd.DataFrame.from_records(keep_pairs, columns=id_cols)
+    return pd.DataFrame.from_records(keep_pairs, columns=id_cols).assign(
+        recip=1)
 
 
-def get_reciprocals(df, sensitivity=False, across=False):
+def flag_reciprocals(df, sensitivity=False, across=False):
     """Only keep reciprocal pairs by origin, destination country.
 
     We know that not all countries of origin are represented in these data,
@@ -272,18 +282,32 @@ def get_reciprocals(df, sensitivity=False, across=False):
     destination, by number of users. Returns dataframe with only
     reciprocal pairs within date of collection
     or across all dates.
+
+    Note-- this used to save a file for by date reciprocals too, but
+    I don't have a need for a file like that right now, so stopped
+    saving it. Create by setting across=False.
     """
     if sensitivity:
         sensitivity_reciprocal_pairs(df)
     # drop some dates to increase the number of pairs
-    if across:
-        df = df[~(df['query_date'].isin(
-            ['2021-02-08', '2021-03-22']))]
-    recip_df = _get_reciprocal_pairs(df, across)
-    return recip_df.merge(df, how='left')
+    # this is an interative process
+    drop_dates = ['2021-02-08', '2021-03-22']
+    recip_df = _get_reciprocal_pairs(
+        df, across, drop_dates=drop_dates)
+    df = df.merge(recip_df, how='left')
+    # just a lil hack
+    # the recip_df for across=True doesn't use query_date as a merge_col
+    # so need to fill that in w/ recip = 0
+    # a better fix would be to change this in the if block for
+    # _get_reciprocal_pairs (see note there)
+    df['recip'] = df['recip'].fillna(0)
+    df.loc[df['query_date'].isin(drop_dates), 'recip'] = 0
+    return df
 
 
 def get_net_migration(df, value_col='flow', add_cols=['query_date']):
+    if 'recip' in df.columns:
+        add_cols += ['recip']
     orig_cols = ['iso3_orig'] + add_cols
     dest_cols = ['iso3_dest'] + add_cols
     return df.assign(
@@ -293,6 +317,12 @@ def get_net_migration(df, value_col='flow', add_cols=['query_date']):
         x.groupby(orig_cols)[value_col].transform(sum),
         # use 100 to compare w/ GWP
         net_rate_100=lambda x: (x['net_flow'] / x['users_orig']) * 100)
+
+
+def get_rank(df):
+    """Add a column with the ranking of flow within each destination."""
+    return df.assign(rank=df.groupby(['query_date', 'iso3_dest'])['flow'].rank(
+        ascending=False, method='first', na_option='bottom'))
 
 
 def get_pct_change(df, diff_col='query_date'):
@@ -317,9 +347,10 @@ def get_pct_change(df, diff_col='query_date'):
 def get_variation(
     df, by_cols=['country_orig', 'country_dest'],
     across_col='query_date',
-    value_cols=['flow', 'net_rate_100', 'users_orig', 'users_dest']
+    value_cols=['flow', 'net_rate_100', 'users_orig', 'users_dest', 'rank']
 ):
     assert not df[by_cols + [across_col]].duplicated().values.any()
+
     def rsem(x):
         return sem(x) / np.mean(x)
     v_df = df.groupby(by_cols)[value_cols].agg(
@@ -369,7 +400,7 @@ def add_metadata(df):
         df[col] = df.apply(
             lambda x: 1 if (x['iso3_orig'] in iso3_codes) &
             (x['iso3_dest'] in iso3_codes) else 0,
-        axis=1)
+            axis=1)
     # columns for distance, language proximity
     kwargs = {
         'how': 'left', 'left_on': ['iso3_orig', 'iso3_dest'],
@@ -388,10 +419,13 @@ def fill_missing_borders(df):
         url, na_values=[''], keep_default_na=False,
         usecols=['country_code', 'country_border_code'],
         converters=dict(zip(
-            ['country_code', 'country_border_code'], [lambda x: iso2_to_iso3(x)]*2
+            ['country_code', 'country_border_code'], [
+                lambda x: iso2_to_iso3(x)]*2
         ))
-    ).rename(columns={'country_code': 'iso3_orig', 'country_border_code': 'iso3_dest'})
-    borderless = borders.loc[borders['iso3_dest'].isnull(), 'iso3_orig'].unique()
+    ).rename(columns={
+        'country_code': 'iso3_orig', 'country_border_code': 'iso3_dest'})
+    borderless = borders.loc[borders['iso3_dest'].isnull(),
+                             'iso3_orig'].unique()
     df = df.merge(borders, how='left', indicator='neighbor')
     df.loc[
         (df['contig'].isnull()) & (df['neighbor'] == 'both'), 'contig'
@@ -399,7 +433,7 @@ def fill_missing_borders(df):
     df.loc[
         (df['contig'].isnull()) &
         (df['iso3_orig'].isin(borderless) | df['iso3_dest'].isin(borderless)),
-    'contig'] = 0
+        'contig'] = 0
     # TODO see if it's possible to fill in more missing values
     return df.drop('neighbor', axis=1)
 
@@ -417,9 +451,9 @@ def fix_query_date(df, cutoff=np.timedelta64(10, 'D')):
 
 
 def data_validation(
-        df, id_cols=['country_orig', 'country_dest', 'query_date'],
-        value_col='flow'
-    ):
+    df, id_cols=['country_orig', 'country_dest', 'query_date'],
+    value_col='flow'
+):
     """Checks and fixes before saving."""
     # TODO check for null values and try to fill them in
     df = fill_missing_borders(df)
@@ -433,7 +467,7 @@ def data_validation(
         df = df.drop_duplicates(subset=id_cols, ignore_index=True)
     assert df[value_col].dtype == int
     return df
-    
+
 
 def collapse(df, var, id_cols=None, value_col='flow'):
     if id_cols is None:
@@ -442,12 +476,8 @@ def collapse(df, var, id_cols=None, value_col='flow'):
     return df.groupby(id_cols)[value_col].sum().reset_index()
 
 
-def main(update_chord_diagram=True):
-    df = (
-        pd.read_csv(path.join(get_input_dir(), get_latest_data()))
-          .pipe(standardize_col_names)
-          .pipe(reshape_long_wide)
-    )
+def main(update_chord_diagram=False):
+    df = read_data().pipe(reshape_long_wide)
     # see changes across data collection dates
     (df.pipe(get_pct_change)
        .pipe(save_output, 'pct_change'))
@@ -456,22 +486,22 @@ def main(update_chord_diagram=True):
             .pipe(add_metadata)
             .pipe(bin_continuous_vars, ['hdi', 'gdp'])
             .pipe(data_validation)
-            .pipe(drop_bad_rows))
+            .pipe(drop_bad_rows)
+            .pipe(get_rank)
+            .pipe(flag_reciprocals, False, True)
+            .pipe(get_net_migration))
 
-    # save separate outputs
     save_output(df, 'model_input')
-    (df.pipe(get_reciprocals, False, False)
-       .pipe(get_net_migration)
-       .pipe(save_output, 'model_input_by_date_recip_pairs'))
-    recip_df = (df.pipe(get_reciprocals, False, True)
-                  .pipe(get_net_migration))
-    save_output(recip_df, 'model_input_recip_pairs')
-    recip_df.pipe(get_variation).pipe(save_output, 'variance')
+    df.query('recip == 1').pipe(get_variation).pipe(
+        save_output, 'variance_recip')
+    df.drop('recip', axis=1).pipe(get_variation).pipe(save_output, 'variance')
 
     if update_chord_diagram:
         for grp_var in ['hdi', 'gdp', 'midreg', 'subregion']:
             save_output(
-                collapse(recip_df, grp_var), f'chord_diagram_{grp_var}')
+                collapse(
+                    df.query('recip == 1'), grp_var),
+                f'chord_diagram_{grp_var}')
 
 
 if __name__ == "__main__":
