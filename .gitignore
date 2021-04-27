@@ -1,4 +1,6 @@
 .idea/
-.ipynb_checkpoints/
-LinkedInRecruiter-DB2CSV.ipynb
+.ipynb_checkpoints*
+*.ipynb
+notebooks/
 __pycache__/
+
