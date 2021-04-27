@@ -1,5 +1,4 @@
 import argparse
-import sys
 from collections import defaultdict
 from os import mkdir, path
 
@@ -11,7 +10,7 @@ from utils.io import _get_working_dir, get_input_dir
 
 
 def get_output_dir(custom_dir=None, sub_dir=None):
-    #TODO this is bad, I copied it from another file oops
+    # TODO this is bad, I copied it from another file oops
     if sub_dir:
         outdir = path.join(_get_working_dir(custom_dir), 'plots', sub_dir)
     else:
@@ -36,7 +35,7 @@ def check_cutoffs(df, y):
         if len(overlap) != 0:
             # this could be better & pick an index based on where more
             # points are already
-           df.loc[df[f'country_{y}'].isin(overlap), 'cutoff'] = idx - 1
+            df.loc[df[f'country_{y}'].isin(overlap), 'cutoff'] = idx - 1
     return df
 
 
@@ -89,12 +88,15 @@ def line_plt(df, iso, avg_prop, avg_n, x, y, split=None):
     # subtitle
     ax.text(
         x=0.5, y=1.03,
-        s=f'on average {avg_prop:.1%} of people in {country} use LinkedIn (n={avg_n:,.0f})',
-        fontsize=10, alpha=0.75, ha='center', va='bottom', transform=ax.transAxes
+        s=f'on average {avg_prop:.1%} of people in\
+             {country} use LinkedIn (n={avg_n:,.0f})',
+        fontsize=10, alpha=0.75, ha='center', va='bottom',
+        transform=ax.transAxes
     )
     fig.tight_layout()
     # plt.show()
-    plt.savefig(f'{get_output_dir(sub_dir=iso)}/{iso}_{x}_{suffix}.png', dpi=300)
+    plt.savefig(f'{get_output_dir(sub_dir=iso)}/{iso}_{x}_{suffix}.png',
+                dpi=300)
     plt.close()
 
 
