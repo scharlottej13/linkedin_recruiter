@@ -321,8 +321,11 @@ def get_net_migration(df, value_col='flow', add_cols=['query_date']):
 
 def get_rank(df):
     """Add a column with the ranking of flow within each destination."""
-    return df.assign(rank=df.groupby(['query_date', 'iso3_dest'])['flow'].rank(
-        ascending=False, method='first', na_option='bottom'))
+    flow_grp = df.groupby(['query_date', 'iso3_dest'])['flow']
+    return df.assign(
+        rank=flow_grp.rank(ascending=False, method='first'),
+        rank_norm=flow_grp.rank(ascending=False, method='first', pct=True)
+    )
 
 
 def get_pct_change(df, diff_col='query_date'):
@@ -347,17 +350,21 @@ def get_pct_change(df, diff_col='query_date'):
 def get_variation(
     df, by_cols=['country_orig', 'country_dest'],
     across_col='query_date',
-    value_cols=['flow', 'net_rate_100', 'users_orig', 'users_dest', 'rank']
+    value_cols=['flow', 'net_rate_100', 'users_orig',
+                'users_dest', 'rank', 'rank_norm']
 ):
     assert not df[by_cols + [across_col]].duplicated().values.any()
+    # if this column is missing, then df includes recip & non-recip
+    if 'recip' not in df.columns:
+        value_cols.remove('net_rate_100')
 
     def rsem(x):
         return sem(x) / np.mean(x)
     v_df = df.groupby(by_cols)[value_cols].agg(
         ['std', 'mean', 'median', 'count', cv, sem, rsem]
     ).reset_index()
-    v_df.columns = ['_'.join(x) if '' not in x else ''.join(x)
-                    for x in v_df.columns]
+    v_df.columns = ['_'.join(x) if '' not in x
+                    else ''.join(x) for x in v_df.columns]
     add_cols = list(set(df.columns) - set(value_cols + by_cols + [across_col]))
     return v_df.merge(df[by_cols + add_cols].drop_duplicates())
 
@@ -493,7 +500,7 @@ def main(update_chord_diagram=False):
 
     save_output(df, 'model_input')
     df.query('recip == 1').pipe(get_variation).pipe(
-        save_output, 'variance_recip')
+        save_output, 'variance_recip_pairs')
     df.drop('recip', axis=1).pipe(get_variation).pipe(save_output, 'variance')
 
     if update_chord_diagram:
