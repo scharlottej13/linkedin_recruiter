@@ -6,7 +6,7 @@ from os import listdir, path, pipe
 
 import numpy as np
 import pandas as pd
-from scipy.stats import variation as cv, sem
+from scipy.stats import variation as cv
 from pycountry import countries
 
 from utils.io import get_input_dir, save_output
@@ -350,21 +350,18 @@ def get_pct_change(df, diff_col='query_date'):
 def get_variation(
     df, by_cols=['country_orig', 'country_dest'],
     across_col='query_date',
-    value_cols=['flow', 'net_rate_100', 'users_orig',
+    value_cols=['flow', 'net_flow', 'net_rate_100', 'users_orig',
                 'users_dest', 'rank', 'rank_norm']
 ):
     assert not df[by_cols + [across_col]].duplicated().values.any()
-    # if this column is missing, then df includes recip & non-recip
-    if 'recip' not in df.columns:
-        value_cols.remove('net_rate_100')
-
-    def rsem(x):
-        return sem(x) / np.mean(x)
+    # def rsem(x):
+    #     return sem(x) / np.mean(x)
     v_df = df.groupby(by_cols)[value_cols].agg(
-        ['std', 'mean', 'median', 'count', cv, sem, rsem]
+        ['std', 'mean', 'median', 'count', cv]
     ).reset_index()
     v_df.columns = ['_'.join(x) if '' not in x
                     else ''.join(x) for x in v_df.columns]
+    # add other metadata
     add_cols = list(set(df.columns) - set(value_cols + by_cols + [across_col]))
     return v_df.merge(df[by_cols + add_cols].drop_duplicates())
 
@@ -393,12 +390,9 @@ def add_metadata(df):
     # (1) two new columns, separate for origin + destination
     area_map = prep_country_area()
     int_use = prep_internet_usage()
-    for k, v in {'prop': None, 'area': area_map, 'internet': int_use}.items():
+    for k, v in {'area': area_map, 'internet': int_use}.items():
         for x in ['orig', 'dest']:
-            if k != 'prop':
-                df[f'{k}_{x}'] = df[f'iso3_{x}'].map(v)
-            else:
-                df[f'{k}_{x}'] = df[f'users_{x}'] / df[f'pop_{x}']
+            df[f'{k}_{x}'] = df[f'iso3_{x}'].map(v)
     # (2) one new column, based on origin/destination pair
     # columns flagging EU, Schengen, EEA membership
     eu = prep_eu_states()
