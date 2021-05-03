@@ -3,6 +3,7 @@
 from datetime import datetime
 from collections import defaultdict, namedtuple
 from os import listdir, path, pipe
+import argparse
 
 import numpy as np
 import pandas as pd
@@ -472,12 +473,14 @@ def data_validation(
 
 def collapse(df, var, id_cols=None, value_col='flow'):
     if id_cols is None:
-        id_cols = [x for x in df.columns if
-                   (var in x) & ('bin' in x)] + ['query_date']
-    return df.groupby(id_cols)[value_col].sum().reset_index()
+        id_cols = [x for x in df.columns if (var in x)]
+    return df.groupby(
+        id_cols + ['query_date']
+    )[value_col].sum().reset_index().groupby(
+        id_cols)[value_col].median().reset_index()
 
 
-def main(update_chord_diagram=False):
+def main(update_chord_diagram):
     df = read_data().pipe(reshape_long_wide)
     # see changes across data collection dates
     (df.pipe(get_pct_change)
@@ -498,12 +501,17 @@ def main(update_chord_diagram=False):
     df.drop('recip', axis=1).pipe(get_variation).pipe(save_output, 'variance')
 
     if update_chord_diagram:
-        for grp_var in ['hdi', 'gdp', 'midreg', 'subregion']:
+        for grp_var in ['bin_hdi', 'bin_gdp', 'midreg', 'subregion']:
             save_output(
-                collapse(
-                    df.query('recip == 1'), grp_var),
-                f'chord_diagram_{grp_var}')
+                collapse(df, grp_var), f'chord_diagram_{grp_var}'
+            )
 
 
 if __name__ == "__main__":
-    main()
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        '-update', help='whether to update input data for the chord diagram',
+        action='store_true'
+    )
+    args = parser.parse_args()
+    main(args.update)
