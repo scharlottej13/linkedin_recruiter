@@ -2,67 +2,66 @@ library(MASS)
 library(dplyr)
 library(gravity)
 
-get_filepath <- function(date) {
-  # this is changed manually
-  file <- paste0("model_input_", date, ".csv")
-  # for swapping between windows & mac
+get_parent_dir <- function() {
   os <- Sys.info()[["sysname"]]
-  if (os == "Darwin") {
-    parent_dir <- "/Users/scharlottej13/Nextcloud/linkedin_recruiter/inputs/"
-    filepath <- paste0(parent_dir, file)
-  } else if (os == "Windows") {
-    parent_dir <- "N:\\johnson\\linkedin_recruiter\\inputs\\"
-    filepath <- paste0(parent_dir, file)
+  if (os == "Windows") {
+    parent_dir <- "N:\\johnson\\linkedin_recruiter"
   } else {
-    print("not tested for linux yet")
+    parent_dir <- "/Users/scharlottej13/Nextcloud/linkedin_recruiter"
   }
+  normalizePath(parent_dir, mustWork = TRUE)
 }
 
 return_df <- function(df) {
-  # does R have a builtin f'n for this?
+  # TODO does R have a builtin f'n for this?
   df
 }
 
-prep_data <- function(df, factor_vars, log_vars, keep_vars, type) {
+prep_data <- function(
+  df, dep_var, factor_vars, log_vars, keep_vars,type, min_n) {
   if (type == "cohen") {
+    log_vars <- c(dep_var, log_vars)
     my_func <- "log10"
   } else if (type == "poisson") {
-    # drop 'flow' b/c in glm R handles this
-    log_vars <- log_vars[!log_vars == "flow"]
+    # glm has log-link
     my_func <- "log"
   } else {
     # gravity model already log transforms
     my_func <- "return_df"
   }
   df %>%
+    filter(dep_var >= min_n) %>%
     mutate_at(factor_vars, factor) %>%
     mutate_at(log_vars, getFunction(my_func)) %>%
     dplyr::select(all_of(keep_vars))
 }
 
-run_model <- function(df, log_vars = NULL, other_factors = NULL,
-                      other_numeric = NULL, type = "cohen") {
+run_model <- function(
+  df, dep_var = "flow", log_vars = NULL, other_factors = NULL,
+  other_numeric = NULL, type = "cohen", min_n=25) {
   # Run a model of flow ~ country_destination + country_origin
   # log_vars: independent variables that will be log transformed
-  # other_factors: independent categorical variables
+  # other_factors: independent categorical variables in addition to
+  # country_dest, country_orig)
   # other_numeric: independent numeric variables that are not log transformed
-  # in addition to country_dest, country_orig
   # type: type of model to run, one of cohen, poisson, or gravity
-  log_vars <- c("flow", log_vars)
+  # min_n: minimum value for the count of the dependent variable
   factors <- c(c("country_orig", "country_dest"), other_factors)
-  keep_vars <- unique(c(log_vars, factors, other_numeric))
-  df <- prep_data(df, factors, log_vars, keep_vars, type)
+  keep_vars <- unique(c(dep_var, log_vars, factors, other_numeric))
+  df <- prep_data(df, dep_var, factors, log_vars, keep_vars, type, min_n)
+  formula <- as.formula(paste(
+    dep_var, paste(keep_vars[keep_vars != dep_var],
+    collapse = " + "), sep = " ~ "))
   if (type == "cohen") {
     # https://www.pnas.org/content/105/40/15269
-    fit <- lm(flow ~ ., data = df)
+    fit <- lm(formula, data = df)
   } else if (type == "poisson") {
-    # no offset b/c one user can want to move to > 1 location
-    fit <- glm(flow ~ ., family = poisson(), data = df)
+    # ? decided no offset b/c one user can want to move to > 1 location
+    fit <- glm(formula, family = poisson(), data = df)
   } else if (type == "gravity") {
-    # TO DO test/build this part more
-    # need to see how to add other categorical covariates
+    # TO DO test/build this part more (as needed)
     fit <- ddm(
-      dependent_variable = "flow", distance = "distance",
+      dependent_variable = dep_var, distance = "distance",
       code_origin = "country_orig", code_destination = "country_dest",
       data = df
     )
@@ -74,6 +73,8 @@ run_model <- function(df, log_vars = NULL, other_factors = NULL,
 }
 
 add_fit_quality <- function(fit, df) {
+  df[["r2"]] <- fit$r.squared
+  df[["adj-r2"]] <- fit$adj.r.squared
   df[["resids"]] <- residuals(fit)
   df[["sresids"]] <- rstandard(fit)
   df[["preds"]] <- fitted.values(fit, df)
@@ -82,21 +83,26 @@ add_fit_quality <- function(fit, df) {
   return(df)
 }
 
+base_dir <- get_parent_dir()
+out_dir <- file.path(base_dir, "model-outputs")
+arch_dir <- file.path(base_dir, "model-outputs", "_archive")
+date <- Sys.Date()
 # read in data
-filepath <- get_filepath("2021-02-19")
-outpath <- gsub("input", "output", filepath)
-df <- read.csv(filepath)
-# create test df for fun, can build this out later
-keep_isos <- c("usa", "can", "fra", "gbr")
-testdf <- df %>% filter(iso3_orig %in% keep_isos & iso3_dest %in% keep_isos)
-
-## tried a bunch, see git diff
-
+df <- read.csv(file.path(base_dir, "processed-data", "variance.csv")) %>% filter(prop_dest_median > 0.01)
 # linear model
-fit <- run_model(df, log_vars = c("distance"), other_factors = c("query_date"),
-                 other_numeric = c("prop_users_orig", "prop_users_dest"))
-write.csv(add_fit_quality(fit, df),
-          gsub("model", "cohen_model", outpath), row.names = FALSE)
+fit <- run_model(
+  df, dep_var = "flow_median",
+  log_vars = c("dist_biggest_cities", "users_orig_median", "users_dest_median")
+)
+write.csv(
+  add_fit_quality(fit, df),
+  file.path(out_dir), "cohen_model.csv", row.names = FALSE
+)
+write.csv(
+  add_fit_quality(fit, df),
+  file.path(arch_dir), paste0("cohen_model_", date, ".csv"),
+  row.names = FALSE
+)
 
 # poisson
 fit2 <- run_model(df,
