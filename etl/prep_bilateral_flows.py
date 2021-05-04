@@ -1,6 +1,6 @@
 """Prep dyadic LinkedIn Recruiter data for all countries."""
 
-from datetime import datetime
+from datetime import datetime as dt
 from collections import defaultdict, namedtuple
 from os import listdir, path, pipe
 import argparse
@@ -349,10 +349,10 @@ def get_pct_change(df, diff_col='query_date'):
 
 
 def get_variation(
-    df, by_cols=['country_orig', 'country_dest'],
+    df, add_cols, by_cols=['country_orig', 'country_dest'],
     across_col='query_date',
     value_cols=['flow', 'net_flow', 'net_rate_100', 'users_orig',
-                'users_dest', 'rank', 'rank_norm']
+                'users_dest', 'prop_orig', 'prop_dest', 'rank', 'rank_norm']
 ):
     assert not df[by_cols + [across_col]].duplicated().values.any()
     # def rsem(x):
@@ -362,8 +362,7 @@ def get_variation(
     ).reset_index()
     v_df.columns = ['_'.join(x) if '' not in x
                     else ''.join(x) for x in v_df.columns]
-    # add other metadata
-    add_cols = list(set(df.columns) - set(value_cols + by_cols + [across_col]))
+    add_cols = list(set(add_cols) - set(value_cols))
     return v_df.merge(df[by_cols + add_cols].drop_duplicates())
 
 
@@ -388,12 +387,16 @@ def add_metadata(df):
     and destination and (2) where one new column is created from the
     origin, destination pair
     """
+    orig_cols = df.columns
     # (1) two new columns, separate for origin + destination
     area_map = prep_country_area()
     int_use = prep_internet_usage()
-    for k, v in {'area': area_map, 'internet': int_use}.items():
+    for k, v in {'area': area_map, 'internet': int_use, 'prop': ''}.items():
         for x in ['orig', 'dest']:
-            df[f'{k}_{x}'] = df[f'iso3_{x}'].map(v)
+            if k == 'prop':
+                df[f'{k}_{x}'] = df[f'users_{x}'] / df[f'pop_{x}']
+            else:
+                df[f'{k}_{x}'] = df[f'iso3_{x}'].map(v)
     # (2) one new column, based on origin/destination pair
     # columns flagging EU, Schengen, EEA membership
     eu = prep_eu_states()
@@ -408,7 +411,8 @@ def add_metadata(df):
         'how': 'left', 'left_on': ['iso3_orig', 'iso3_dest'],
         'right_index': True
     }
-    return df.merge(prep_geo(), **kwargs).merge(prep_language(), **kwargs)
+    df = df.merge(prep_geo(), **kwargs).merge(prep_language(), **kwargs)
+    return df, list(set(df.columns) - set(orig_cols))
 
 
 def fill_missing_borders(df):
@@ -442,14 +446,17 @@ def fill_missing_borders(df):
 
 def fix_query_date(df, cutoff=np.timedelta64(10, 'D')):
     """Adjust date of collection for timeout errors."""
-    date_fmt = '%Y-%m-%d'
-    dates = sorted(
-        [datetime.strptime(x, date_fmt) for x in df['query_date'].unique()]
-    )
+    dates = sorted([np.datetime64(x) for x in df['query_date'].unique()])
     combine_dates = {
-        dates[n+1].strftime(date_fmt): dates[n].strftime(date_fmt)
+        str(dates[n + 1]): str(dates[n])
         for n in range(0, len(dates) - 1) if dates[n+1] - dates[n] < cutoff}
-    return df.replace(combine_dates)
+    df = df.replace(combine_dates)
+    # while we're here... let's add another column
+    new_dates = sorted([np.datetime64(x) for x in df['query_date'].unique()])
+    midpoint = np.datetime64(new_dates[round(len(new_dates) / 2)])
+    df['date_centered'] = df['query_date'].apply(
+        lambda x: (np.datetime64(x) - midpoint).astype(int))
+    return df
 
 
 def data_validation(
@@ -483,12 +490,10 @@ def collapse(df, var, id_cols=None, value_col='flow'):
 def main(update_chord_diagram):
     df = read_data().pipe(reshape_long_wide)
     # see changes across data collection dates
-    (df.pipe(get_pct_change)
-       .pipe(save_output, 'pct_change'))
+    df.pipe(get_pct_change).pipe(save_output, 'pct_change')
 
-    df = (df.pipe(merge_region_subregion)
-            .pipe(add_metadata)
-            .pipe(bin_continuous_vars, ['hdi', 'gdp'])
+    df, meta_cols = (df.pipe(merge_region_subregion).pipe(add_metadata))
+    df = (df.pipe(bin_continuous_vars, ['hdi', 'gdp'])
             .pipe(data_validation)
             .pipe(drop_bad_rows)
             .pipe(get_rank)
@@ -496,14 +501,16 @@ def main(update_chord_diagram):
             .pipe(get_net_migration))
 
     save_output(df, 'model_input')
-    df.query('recip == 1').pipe(get_variation).pipe(
+    df.query('recip == 1').pipe(get_variation, meta_cols).pipe(
         save_output, 'variance_recip_pairs')
-    df.drop('recip', axis=1).pipe(get_variation).pipe(save_output, 'variance')
-
+    df.drop('recip', axis=1).pipe(get_variation, meta_cols).pipe(
+        save_output, 'variance')
     if update_chord_diagram:
         for grp_var in ['bin_hdi', 'bin_gdp', 'midreg', 'subregion']:
+            save_output(collapse(df, grp_var), f'chord_diagram_{grp_var}')
             save_output(
-                collapse(df, grp_var), f'chord_diagram_{grp_var}'
+                collapse(df.query('recip == 1'), grp_var),
+                f'chord_diagram_{grp_var}_recip'
             )
 
 
