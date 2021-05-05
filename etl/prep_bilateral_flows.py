@@ -1,6 +1,5 @@
 """Prep dyadic LinkedIn Recruiter data for all countries."""
 
-from datetime import datetime as dt
 from collections import defaultdict, namedtuple
 from os import listdir, path, pipe
 import argparse
@@ -161,12 +160,27 @@ def prep_language():
     normalized lp1, lp2 so coefficients are comparable to eachother and COL
     prox1 and prox2 are unadjusted versions of lp1 and lp2?
     """
-    return pd.read_stata(
-        path.join(get_input_dir(), 'CEPII_language/CEPII_language.dta'),
-        columns=['iso_o', 'iso_d', 'col', 'csl', 'cnl', 'prox1', 'prox2']
-    ).assign(iso_o=lambda x: x['iso_o'].str.lower(),
-             iso_d=lambda x: x['iso_d'].str.lower()
-             ).set_index(['iso_o', 'iso_d'])
+    df = pd.read_stata(
+        path.join(get_input_dir(), 'CEPII_language/CEPII_language.dta'))
+    # belgium & luxembourg are one row, split into 2
+    blx_dict = {'Belgium': 'BEL', 'Luxembourg': 'LUX'}
+    blx = df.loc[(df['iso_o'] == 'BLX') | (df['iso_d'] == 'BLX')].assign(
+        country_o=df['country_o'].str.split(' and '),
+        country_d=df['country_d'].str.split(' and ')
+    ).explode('country_o').explode('country_d')
+    blx['iso_o'] = blx['country_o'].map(blx_dict).fillna(blx['iso_o'])
+    blx['iso_d'] = blx['country_d'].map(blx_dict).fillna(blx['iso_d'])
+    # and, of course, what about bel -> lux (and vice versa)?
+    x = pd.DataFrame(dict(zip(
+        ['iso_o', 'iso_d', 'col', 'csl', 'cnl', 'prox1',
+         'lp1', 'prox2', 'lp2'],
+        [['BEL', 'LUX']] + [['LUX', 'BEL']] + [[1, 1]]*3 + [[0, 0]]*4
+    )))
+    return pd.concat([df, blx, x]).assign(
+        iso_o=lambda x: x['iso_o'].str.lower(),
+        iso_d=lambda x: x['iso_d'].str.lower()
+    ).set_index(['iso_o', 'iso_d']).drop(
+        columns=['country_o', 'country_d', 'cle', 'cl'])
 
 
 def prep_internet_usage():
