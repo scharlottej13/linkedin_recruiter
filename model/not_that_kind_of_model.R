@@ -18,7 +18,7 @@ return_df <- function(df) {
 }
 
 prep_data <- function(
-  df, dep_var, factor_vars, log_vars, keep_vars,type, min_n) {
+  df, dep_var, factor_vars, log_vars, keep_vars, type, min_n) {
   if (type == "cohen") {
     log_vars <- c(dep_var, log_vars)
     my_func <- "log10"
@@ -46,7 +46,7 @@ run_model <- function(
   # other_numeric: independent numeric variables that are not log transformed
   # type: type of model to run, one of cohen, poisson, or gravity
   # min_n: minimum value for the count of the dependent variable
-  factors <- c(c("country_orig", "country_dest"), other_factors)
+  factors <- c(c("country_dest"), other_factors)
   keep_vars <- unique(c(dep_var, log_vars, factors, other_numeric))
   df <- prep_data(df, dep_var, factors, log_vars, keep_vars, type, min_n)
   formula <- as.formula(paste(
@@ -72,7 +72,8 @@ run_model <- function(
  return(fit)
 }
 
-add_fit_quality <- function(fit, df) {
+add_fit_quality <- function(fit) {
+  df <- fit$model
   df[["r2"]] <- fit$r.squared
   df[["adj-r2"]] <- fit$adj.r.squared
   df[["resids"]] <- residuals(fit)
@@ -88,18 +89,21 @@ out_dir <- file.path(base_dir, "model-outputs")
 arch_dir <- file.path(base_dir, "model-outputs", "_archive")
 date <- Sys.Date()
 # read in data
-df <- read.csv(file.path(base_dir, "processed-data", "variance.csv")) %>% filter(prop_dest_median > 0.01)
+df <- read.csv(
+  file.path(base_dir, "processed-data", "variance.csv")
+) %>% filter(prop_dest_median > 0.05)
 # linear model
 fit <- run_model(
   df, dep_var = "flow_median",
-  log_vars = c("dist_biggest_cities", "users_orig_median", "users_dest_median")
+  log_vars = c("dist_biggest_cities", "users_orig_median", "users_dest_median"),
+  other_numeric = c("internet_orig", "csl")
 )
 write.csv(
-  add_fit_quality(fit, df),
+  add_fit_quality(fit),
   file.path(out_dir), "cohen_model.csv", row.names = FALSE
 )
 write.csv(
-  add_fit_quality(fit, df),
+  add_fit_quality(fit),
   file.path(arch_dir), paste0("cohen_model_", date, ".csv"),
   row.names = FALSE
 )
