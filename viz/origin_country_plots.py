@@ -55,7 +55,7 @@ def line_plt(df, iso, avg_prop, avg_n, x, y, split=None):
         df['query_date'].unique(),
         rotation=45, horizontalalignment='right')
     ax.set_xlabel('Date of Data Collection')
-    ax.set_ylabel('Percent Open to Relocation')
+    ax.set_ylabel('Percent of all users')
     if not split:
         suffix = 'time_series'
         ncol = 2
@@ -88,8 +88,7 @@ def line_plt(df, iso, avg_prop, avg_n, x, y, split=None):
     # subtitle
     ax.text(
         x=0.5, y=1.03,
-        s=f'on average {avg_prop:.1%} of people in\
-             {country} use LinkedIn (n={avg_n:,.0f})',
+        s=f'on average {avg_prop:.1%} of people in {country} use LinkedIn (n={avg_n:,.0f})',
         fontsize=10, alpha=0.75, ha='center', va='bottom',
         transform=ax.transAxes
     )
@@ -109,7 +108,7 @@ def prep_data(iso, x, y):
         'ita': [0, .00002, .00004, .0014, 1],
         'deu': [0, .00003, .00004, .00008, .0015, 1]
     })
-    return df.assign(
+    return df.query(f"iso3_{x} == '{iso}'").assign(
         prop=df['flow'] / df[f'users_{x}'],
         cutoff=lambda x: pd.qcut(
             x['prop'], bins_dict[iso], labels=False
