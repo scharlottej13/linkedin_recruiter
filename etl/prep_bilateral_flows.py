@@ -111,7 +111,8 @@ def prep_geo():
     """
     cepii = pd.read_excel(
         path.join(get_input_dir(), 'CEPII_distance/dist_cepii.xls'),
-        converters=dict(zip(['iso_o', 'iso_d'], [lambda x: str.lower(x)]*2)))
+        converters=dict(zip(['iso_o', 'iso_d'], [lambda x: str.lower(x)]*2))
+    ).replace({'rom': 'rou'})
     maciej = pd.read_csv(
         path.join(get_input_dir(), 'maciej_distance/DISTANCE.csv'),
         keep_default_na=False,
