@@ -37,7 +37,7 @@ prep_data <- function(
 }
 
 run_model <- function(
-  df, dep_var = "flow", log_vars = NULL, other_factors = NULL,
+  df, dep_var = "flow", log_vars = NULL, factors = NULL,
   other_numeric = NULL, type = "cohen", min_n=25) {
   # Run a model of flow ~ country_destination + country_origin
   # log_vars: independent variables that will be log transformed
@@ -46,7 +46,6 @@ run_model <- function(
   # other_numeric: independent numeric variables that are not log transformed
   # type: type of model to run, one of cohen, poisson, or gravity
   # min_n: minimum value for the count of the dependent variable
-  factors <- c(c("country_dest"), other_factors)
   keep_vars <- unique(c(dep_var, log_vars, factors, other_numeric))
   df <- prep_data(df, dep_var, factors, log_vars, keep_vars, type, min_n)
   formula <- as.formula(paste(
@@ -72,16 +71,21 @@ run_model <- function(
  return(fit)
 }
 
-add_fit_quality <- function(fit) {
-  df <- fit$model
-  df[["r2"]] <- fit$r.squared
-  df[["adj-r2"]] <- fit$adj.r.squared
-  df[["resids"]] <- residuals(fit)
-  df[["sresids"]] <- rstandard(fit)
-  df[["preds"]] <- fitted.values(fit, df)
-  df[["cooks_dist"]] <- cooks.distance(fit)
-  df[["hat_values"]] <- hatvalues(fit)
-  return(df)
+add_fit_quality <- function(fit, df) {
+  keep_vars <- unique(
+    c("country_dest", "country_orig"), attr(fit$terms, "term.labels")
+  )
+  df %>%
+    select(keep_vars) %>%
+    mutate(
+      r2 = fit$r.squared,
+      adj_r2 = fit$adj.r.squared,
+      resids = residuals(fit),
+      sresids = rstandard(fit),
+      preds = fit$fitted.values,
+      cooks_dist = cooks.distance(fit),
+      hat_values = hatvalues(fit)
+    )
 }
 
 base_dir <- get_parent_dir()
@@ -94,27 +98,29 @@ df <- read.csv(
 ) %>% filter(prop_dest_median > 0.05)
 # linear model
 fit <- run_model(
-  df, dep_var = "flow_median",
+  df,
+  dep_var = "flow_median",
   log_vars = c("dist_biggest_cities", "users_orig_median", "users_dest_median"),
-  other_numeric = c("internet_orig", "csl")
+  other_numeric = c("contig", "csl"),
+  factors = c("country_dest", "country_orig")
 )
-write.csv(
-  add_fit_quality(fit),
-  file.path(out_dir), "cohen_model.csv", row.names = FALSE
-)
-write.csv(
-  add_fit_quality(fit),
-  file.path(arch_dir), paste0("cohen_model_", date, ".csv"),
+sink(file.path(out_dir, "cohen_5.txt"))
+print(summary(fit))
+sink()
+write.csv(fit$model, file.path(out_dir, "cohen_modelframe_5.csv"),
   row.names = FALSE
 )
-
-# poisson
-fit2 <- run_model(df,
-  log_vars = c("distance"), other_factors = c("query_date"),
-  other_numeric = c("prop_users_orig", "prop_users_dest"), type = "poisson"
+write.csv(
+  add_fit_quality(fit, df),
+  file.path(out_dir, "cohen_5.csv"), row.names = FALSE
 )
-write.csv(add_fit_quality(fit2, df),
-          gsub("model", "poisson_model", outpath), row.names = FALSE)
+# # poisson
+# fit2 <- run_model(df,
+#   log_vars = c("distance"), other_factors = c("query_date"),
+#   other_numeric = c("prop_users_orig", "prop_users_dest"), type = "poisson"
+# )
+# write.csv(add_fit_quality(fit2, df),
+#           gsub("model", "poisson_model", outpath), row.names = FALSE)
 
 # fit <- run_model(df,
 #   log_vars = c("distance"), type = "gravity"
