@@ -6,15 +6,15 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from utils.io import _get_working_dir, get_input_dir
+from utils.io import get_output_dir, get_working_dir
 
 
-def get_output_dir(custom_dir=None, sub_dir=None):
+def get_plot_dir(custom_dir=None, sub_dir=None):
     # TODO this is bad, I copied it from another file oops
     if sub_dir:
-        outdir = path.join(_get_working_dir(custom_dir), 'plots', sub_dir)
+        outdir = path.join(get_working_dir(custom_dir), 'plots', sub_dir)
     else:
-        outdir = path.join(_get_working_dir(custom_dir), 'plots')
+        outdir = path.join(get_working_dir(custom_dir), 'plots')
     if not path.exists(outdir):
         mkdir(outdir)
     return outdir
@@ -95,18 +95,13 @@ def line_plt(df, iso, avg_prop, avg_n, x, y, split=None):
     )
     fig.tight_layout()
     # plt.show()
-    plt.savefig(f'{get_output_dir(sub_dir=iso)}/{iso}_{x}_{suffix}.png',
-                dpi=300)
+    plt.savefig(
+        f'{get_plot_dir(sub_dir=iso)}/{iso}_{x}_{suffix}.png', dpi=300)
     plt.close()
 
 
 def prep_data(iso, x, y):
-    df = pd.read_csv(f"{get_input_dir()}/model_input.csv")
-    # only keep countries with complete time series
-    keep_isos = list(
-        df.query(f"iso3_{x} == '{iso}'").groupby(
-            # TODO this should be dynamic not hard coded
-            f'iso3_{y}')['flow'].count().iloc[lambda x: x.values == 14].index)
+    df = pd.read_csv(f"{get_output_dir()}/model_input.csv")
     # splitting the subplots is a bit manual, try for 5 splits first
     bins_dict = defaultdict(lambda: 5)
     bins_dict.update({
@@ -114,7 +109,7 @@ def prep_data(iso, x, y):
         'ita': [0, .00002, .00004, .0014, 1],
         'deu': [0, .00003, .00004, .00008, .0015, 1]
     })
-    return df.query(f"iso3_{x} == '{iso}' & iso3_{y} in {keep_isos}").assign(
+    return df.assign(
         prop=df['flow'] / df[f'users_{x}'],
         cutoff=lambda x: pd.qcut(
             x['prop'], bins_dict[iso], labels=False
