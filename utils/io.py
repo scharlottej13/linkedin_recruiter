@@ -7,7 +7,7 @@ from datetime import datetime
 # eg seeing A -> B and B -> A not necessary
 
 
-def _get_working_dir(custom_dir):
+def get_working_dir(custom_dir):
     pc = "N:/johnson/linkedin_recruiter"
     mac = "/Users/scharlottej13/Nextcloud/linkedin_recruiter"
     check_dirs = [pc, mac]
@@ -24,13 +24,13 @@ def _get_working_dir(custom_dir):
 def get_input_dir(custom_dir=None):
     # TODO read in filepaths from config, then set in init
     # don't love how this f'n is called all the time
-    return path.join(_get_working_dir(custom_dir), 'raw-data')
+    return path.join(get_working_dir(custom_dir), 'raw-data')
 
 
 def get_output_dir(custom_dir=None):
     # TODO read in filepaths from config, then set in init
     # don't love how this f'n is called all the time
-    return path.join(_get_working_dir(custom_dir), 'processed-data')
+    return path.join(get_working_dir(custom_dir), 'processed-data')
 
 
 def save_output(df, filename, archive=True):
