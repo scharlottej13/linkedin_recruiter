@@ -5,7 +5,7 @@
 \subsection*{Background}
 puzzle important to international migration
 \begin{enumerate}
-    \item Existing migration theory continues to fall short in explaining extant trends in international migration. In order to address this issue, much research has turned  its focus to the migration decision-making process.
+    \item Existing migration theory continues to fall short in explaining current trends in international migration. In order to address this issue, much research has turned  its focus to the migration decision-making process.
 \end{enumerate}
 summary of existing literature
 \begin{enumerate}
@@ -30,43 +30,36 @@ Theoretical framework
     \item Part of “multi-dimensional inquiry into how people relate to future migration” (Carling, renewing migration debate 2020)
     \item could empirically investigate the 'high positive \& negative liberty' box in Hein de Haas' 2021 framework
 \end{enumerate}
-The number of surveys reporting on the determinants of the migration decision-making process has increased in the last 30 years, enabling researchers to answer questions related not only to those who have already migrated, but also on the factors influencing both the formation of migration aspirations and whether those aspirations are converted to mobility (Aslany et al. 2021). The insight gleaned from analysis of existing surveys is impressive, however, not without room for improvement. These surveys can be geographically limited (only 7\% of are multi-regional), lack inter-survey comparability (there is much diversity in wording across survey instruments), and suffer from acquiescence bias (many questionnaires ask about preferences for leaving but not staying) (Carling & Mjelva 2021). In order address this gap, we present a novel digital data source based on LinkedIn users open to work-related relocation.
+The number of surveys inquiring about the migration decision-making process has increased in the last 30 years, enabling researchers to separately analyze the factors influencing the aspiration to migrate and whether that aspiration is converted to behavior (Aslany et al. 2021). [something here on the summary of factors associated w/ aspirations from the lit review?] The insight gleaned from analysis of existing surveys is impressive, however, not without room for improvement. These surveys can be geographically limited (only 7\% of are multi-regional), lack inter-survey comparability (there is much diversity in wording across survey instruments), and suffer from acquiescence bias (many questionnaires ask about preferences for leaving but not staying) (Carling & Mjelva 2021). In order address this gap, we present a novel digital data source based on LinkedIn users open to work-related relocation.
 
-The availability of digital data sources has exploded due to the growing ubiquity of information and communication technologies (ICTs), which contain the details of how a person interacts with and moves through digital spaces (Cesare et al. 2018). These digital trace data are increasingly being used to estimate demographic processes (Alburez-Gutierrez et al. 2019). Indices on Google searches related to migration intentions, for example, have proved to be a powerful tool to improve predictive modeling of bilateral migration flows (Böhme, Gröger, and Stöhr 2020; Wanner 2020). We present a novel dataset collected via LinkedIn Recruiter, on those open to job-related international relocation. LinkedIn, a professional networking site of over 720 million users, is a key underutilized digital data source, having been used in only one study to date for migration estimation (State et al. 2014). Compared to existing survey data, these data are relatively less expensive to collect, are continuously available, have consistently defined variables across locations, and provide a global snapshot of openness to migration as recent as the latest update to a person’s LinkedIn profile. Rather than directly asking a person about their migration preferences, people who are actively looking for a job check a box indicating they are "open to relocation" and then are able to add additional locations, thus removing reactionary responses to the survey instrument. When used to complement existing survey data, this dataset has the potential to offer a more complete picture of migration decisions.
+The availability of digital data sources has exploded due to the growing ubiquity of information and communication technologies (ICTs), which contain the details of how a person interacts with and moves through digital spaces (Cesare et al. 2018). These digital trace data are increasingly being used to estimate demographic processes (Alburez-Gutierrez et al. 2019). Indices on Google searches related to migration intentions, for example, have proved to be a powerful tool to improve predictive modeling of bilateral migration flows (Böhme, Gröger, and Stöhr 2020; Wanner 2020). We present a novel dataset collected via LinkedIn Recruiter, on those open to job-related international relocation. LinkedIn, a professional networking site of over 720 million users, is a key underutilized digital data source, having been used in only one study to date for migration estimation (State et al. 2014). Compared to existing survey data, these data are relatively less expensive to collect, are continuously available, have consistently defined variables across 24 different languages, and provide a global snapshot of openness to migration as recent as the latest update to a person’s LinkedIn profile. Rather than directly asking a person about their migration preferences, people who are actively looking for a job check a box indicating they are "open to relocation" and then are able to add additional locations, thus removing reactionary responses to the survey instrument. When used to complement existing survey data, this dataset has the potential to offer a more complete picture of migration decisions.
 
-\subsection*{Data, methods, and results}
+\subsection*{Data, methods, and preliminary results}
 As implied by the name, LinkedIn Recruiter enables recruiters to identify potential job candidates. Recruiters can search for users by a variety of qualities including industry, education, and years of experience, to name a few. Of particular interest, is the option to search for users who, after having indicated they are "open to finding a new job", have listed job locations that differ from their current location. We have collected the aggregate number of people open to relocating for a job in a country that differs from the country in which they are currently located for 191 destination countries. This process involves a separate search for each destination country; a single search, for example, would collect the number of LinkedIn users open to relocating to Germany, but not currently in Germany, stratified by their current location, for the top 75 current locations (ranked by number of users). After a preliminary round in July 2020, we have collected this information every two weeks from October 2020 onward, and have constructed a dataset of bilateral flows of prospective job-related relocators. Though the spatial resolution of the current location varies from metropolitan area up to the country, analyses presented here omitted locations below the country-level. Median country-level counts across all dates of data collection have been aggregated to provide a global overview of the size and direction of users open to relocation between regions (Figure 1).
 
-Next, we assessed the relative attractiveness of countries within the European Economic Area with the addition of Switzerland and the United Kingdom, through adaptation of a gravity-type model (Cohen et al. 2008). Based on Zipf's premise that the number of people who move from location A to location B is proportionate to the ratio of the product of the populations in A and B divided by the distnace bewteen the two, 
-
-"cannot accurately predict flows but instead is a measure against which observed values can be compared"
-"That would give us an opportunity to identify destinations that are particularly attractive (or not attractive), after some sort of standardization."
-
-Through adaptation of the gravity-type model described by Cohen et al., we identified countries that are relatively more (or less) popular than would be expected. Even after standardization across Notable countries include X, Y, and Z
-
-The first objective of this project is to explore the utility and limitations of this novel dataset. This will involve statistical modeling to determine if observed trends in migration desire are explained by commonly used techniques for modeling migration, such as a gravity model (Wright and Ellis 2016) and other adaptations (Cohen et al. 2008). The next step would be to compare these data to other digital and survey data sources to assess plausibility. The results of the initial, primarily descriptive, analysis will drive forward further exploration into the factors influencing migration aspirations.
-
-Departures from Cohen model, the decision \& rationale:
-\begin{enumerate}
-    \item use the median across dates, instead of keeping all time points. Some country pairs only show up once, despite a 'large' flow (common in countries w/ large population. a more sophisticated future analysis could better handle this (or more data collections).
-    \item only keep destination countries with at least 5\% of their population on LinkedIn. the logic here is... hard to justify. but practically, I had too many predictors and not enough observations, and chose to limit by destination b/c that's how the data are collected in the first place (seems less likely to introduce other spurious bias that way?)
-    \item or a minimum flow size of 25. This is to limit erroneous country pairs, especially since these are not necessarily individual people
-    \item omit rows where other independent variables (e.g. common spoken language) are missing
-    \item 
-\end{enumerate}
-
-\subsection*{Expected findings}
-\begin{enumerate}
-    \item table of observations (pairs) over time (maybe something in the appendix with complete list of countries)
-    \item chord (circle sankey) diagram; panel A: global by region panel B: EU+ countries
-    \item rank of top destinations (number, percent) compared with MAFE, GWP, etc.
-    \item CV heat map of panel A: EU+ countries; panel B: some other important groups/zooming in? maybe HICs?
-    \item line plot of divergent trends over time (e.g. Poland -> Belarus/Ukraine/Hungary)
-    \item gravity-type model results of relative rankings
-    \item comparing potential vs. realized migration ("unmet need")
-\end{enumerate}
-
-\subsection*{Discussion}
+Next, we assessed the relative attractiveness of countries within the European Union, European Free Trade Association, and the United Kingdom through adaptation of a gravity-type model (Cohen et al. 2008). Based on the premise that the number of people who move from one location to another is proportionate to the ratio of the product of the respective populations divided by the distance bewteen the two, we built a linear model to estimate flows against which our observed data could be compared. Our linear model follows the form:
+\[log(number open to relocate)_{ij} = β_{0} + β_{1}log(P_{i}) + β_{2}log(P_{j}) + β_{3}log(D_{ij}) + β_{4}log(area_{i}) + β_{5}log(area_{j}) + β_{6}border_{ij} + β_{7}csl_{ij}\]
+Where $i$ denotes the current country, $j$ is the prospective destination, $P$ is the number of LinkedIn users, $D$ is the population weighted distance [double check w/ Maciej] between two countries, $area$ is the area in km^2, $border$ is a binary indicator of whether the countries share a land border, and $csl$ is the probability that two people understand a common language. We then identified anamolous destination countries, where the predicted value was much [or some threshold?] higher or lower than what we would expect based on the included geographic and linguistic factors (Figure 2). Of note, XXX and XXX are relatively more popular destinations that would be expected, whereas XXX and XXX are relatively less desirable, after standardizing for geographic and linguistic variables.
+% Departures from Cohen et al.:
+% \begin{enumerate}
+%     \item use the median across dates, instead of keeping all time points. Some country pairs only show up once, despite a 'large' flow (common in countries w/ large population. a more sophisticated future analysis could better handle this (or more data collections).
+%     \item only keep destination countries with at least 5\% of their population on LinkedIn. the logic here is that these destinations may not be reliable (but maybe this step is unnecessary with a minimum 'flow' size)
+%     \item or a minimum flow size of 25. This is to limit erroneous country pairs, especially since these are not necessarily individual people
+%     \item omit rows where other independent variables (e.g. common spoken language) are missing
+%     \item 
+% \end{enumerate}
+% \subsection*{Expected findings}
+% \begin{enumerate}
+%     \item table of observations (pairs) over time (maybe something in the appendix with complete list of countries)
+%     \item chord (circle sankey) diagram; panel A: global by region panel B: EU+ countries
+%     \item rank of top destinations (number, percent) compared with MAFE, GWP, etc.
+%     \item CV heat map of panel A: EU+ countries; panel B: some other important groups/zooming in? maybe HICs?
+%     \item line plot of divergent trends over time (e.g. Poland -> Belarus/Ukraine/Hungary)
+%     \item gravity-type model results of relative rankings
+%     \item comparing potential vs. realized migration ("unmet need")
+% \end{enumerate}
+\subsection*{Conclusion}
+Our initial results describe the global, unadjusted regional patterns amongst LinkedIn users who are open to relocate for a new job.
 \subsubsection*{limitations}
 \begin{enumerate}
     \item we do not know where these people are on the spectrum of idea -> action, i.e. they could be actively planning an international relocation or scoping out possibilities, or daydreaming about a distant, imagined future (we hope to investigate this in future work w/ a survey, further data collection, etc.)
@@ -76,4 +69,4 @@ Departures from Cohen model, the decision \& rationale:
     \item only 75 top countries of origin
     \item different Linkedin penetration
 \end{enumerate}
-%including future work 
+%including future work
