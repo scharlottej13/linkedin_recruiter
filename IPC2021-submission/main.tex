@@ -1,0 +1,57 @@
+\documentclass[12pt]{article}
+\usepackage{blindtext}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{verbatim}
+\usepackage{color,soul}
+\usepackage{ulem}
+\usepackage{amsmath}
+\usepackage{geometry}
+% to make things smaller
+% http://www-h.eng.cam.ac.uk/help/tpl/textprocessing/squeeze.html
+\linespread{0.9}
+\usepackage[text={16cm,24cm}]{geometry}
+\usepackage{mathptmx}
+\setlength{\parskip}{0cm}
+\setlength{\parindent}{1em}
+\usepackage[compact]{titlesec}
+\titlespacing{\section}{0pt}{2ex}{1ex}
+\titlespacing{\subsection}{0pt}{1ex}{0ex}
+\titlespacing{\subsubsection}{0pt}{0.5ex}{0ex}
+% https://www.overleaf.com/learn/how-to/Is_there_a_way_to_run_a_word_count_that_doesn't_include_LaTeX_commands%3F
+% https://tex.stackexchange.com/questions/674/squeezing-scientific-paper-to-fit-within-page-limits
+\newcommand{\quickwordcount}[1]{%
+  \immediate\write18{texcount -1 -sum -merge -q #1.tex output.bbl > #1-words.sum }%
+  \input{#1-words.sum}%
+}
+% bibliography settings
+\usepackage[
+backend=biber,
+style=nature,
+sorting=none
+]{biblatex}
+\addbibresource{IPC2021.bib}
+\renewcommand{\bibfont}{\normalfont\small}
+
+\begin{document}
+\input{00_submission_guidelines}
+\input{01_abstract}
+\title{Using a novel digital data source to study openness to migration}
+\author{%
+Sarah C. Johnson$^1$ \and
+Daniela Perrotta$^1$ \and
+Andr\'{e} Grow$^1$ \and
+Helga de Valk$^2^,^3$ \and
+Emilio Zagheni$^1^,^4^,^5^,^6$}
+\date{%
+    $^1$Max Planck Institute for Demographic Research\\%
+    $^2$Netherlands Interdisciplinary Demographic Institute\\%
+    $^3$University of Groningen\\%
+    $^4$University of Washington\\%
+    $^5$Duke Population Research Institute\\%
+    $^6$Center on the Economics and Demography of Aging, UC Berkeley\\
+}
+\maketitle
+\input{02_extended-summary}
+\printbibliography
+\end{document}
