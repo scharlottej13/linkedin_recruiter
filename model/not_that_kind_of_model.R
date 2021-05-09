@@ -2,6 +2,7 @@ library(MASS)
 library(dplyr)
 library(tidyr)
 library(gravity)
+library(VGAM)
 
 get_parent_dir <- function() {
   os <- Sys.info()[["sysname"]]
@@ -40,7 +41,7 @@ prep_data <- function(
   if (type == "cohen") {
     log_vars <- c(dep_var, log_vars)
     my_func <- "log10"
-  } else if (type == "poisson") {
+  } else if ((type == "poisson") | (type == "nb")) {
     # glm has log-link
     my_func <- "log"
   } else {
@@ -69,9 +70,12 @@ run_model <- function(df, dep_var, type, keep_vars) {
   if (type == "cohen") {
     # https://www.pnas.org/content/105/40/15269
     fit <- lm(formula, data = df)
+  } else if (type == 'nb') {
+    fit <- vglm(formula, data = df, family = posnegbinomial())
   } else if (type == "poisson") {
     # ? decided no offset b/c one user can want to move to > 1 location
-    fit <- glm(formula, family = poisson(), data = df)
+    # fit <- glm(formula, family = poisson(), data = df)
+    fit <- vglm(formula, data = df, family = pospoisson())
   } else if (type == "gravity") {
     # TO DO test/build this part more (as needed)
     fit <- ddm(
@@ -102,14 +106,19 @@ add_fit_quality <- function(fit, df) {
 save_model <- function(
   df, suffix, out_dir = file.path(BASE_DIR, "model-outputs"),
   dep_var = "flow_median", log_vars = NULL, factors = NULL,
-  other_numeric = NULL, type = "cohen", min_n=25,
+  other_numeric = NULL, type = "cohen", min_n=0,
   min_dest_prop = 0.05, global = FALSE
 ) {
     keep_vars <- unique(c(dep_var, log_vars, factors, other_numeric))
     model_df <- prep_data(df, dep_var, factors, log_vars, keep_vars,
       type, min_n, min_dest_prop, global)
     fit <- run_model(model_df, dep_var, type, keep_vars)
-    filename <- paste0("cohen_", suffix)
+    if (global) {
+      filename <- paste0(type, "_global_", suffix)
+    } else {
+      filename <- paste0(type, "_eu_", suffix)
+    }
+    # save model summary output as a text file
     sink(file.path(out_dir, paste0(filename, ".txt")))
     print(summary(fit))
     sink()
@@ -126,25 +135,28 @@ save_model <- function(
 BASE_DIR <- get_parent_dir()
 # read in data
 df <- read.csv(file.path(BASE_DIR, "processed-data", "variance.csv"))
-save_model(df, "base_dist_pop_weighted_plus_comcol", global = TRUE,
-log_vars = c(
-  "dist_pop_weighted", "users_orig_median",
-  "users_dest_median", "area_dest", "area_orig"
-), other_numeric = c("csl", "contig", "comcol"))
-save_model(df, "base_dist_pop_weighted_plus_colony",
-  global = TRUE,
+save_model(
+  df, "dist_biggest_cities_plus",
+  global = FALSE,
   log_vars = c(
-    "dist_pop_weighted", "users_orig_median",
+    "dist_biggest_cities", "users_orig_median",
     "users_dest_median", "area_dest", "area_orig"
-  ), other_numeric = c("csl", "contig", "colony")
+  ), other_numeric = c("csl", "contig")
 )
-save_model(df, "base_dist_pop_weighted_plus_col45",
-  global = TRUE,
-  log_vars = c(
-    "dist_pop_weighted", "users_orig_median",
-    "users_dest_median", "area_dest", "area_orig"
-  ), other_numeric = c("csl", "contig", "col45")
-)
+# save_model(df, "base_dist_pop_weighted_plus_colony",
+#   global = TRUE,
+#   log_vars = c(
+#     "dist_pop_weighted", "users_orig_median",
+#     "users_dest_median", "area_dest", "area_orig"
+#   ), other_numeric = c("csl", "contig", "colony")
+# )
+# save_model(df, "base_dist_pop_weighted_plus_col45",
+#   global = TRUE,
+#   log_vars = c(
+#     "dist_pop_weighted", "users_orig_median",
+#     "users_dest_median", "area_dest", "area_orig"
+#   ), other_numeric = c("csl", "contig", "col45")
+# )
 
 # # poisson
 # fit2 <- run_model(df,
