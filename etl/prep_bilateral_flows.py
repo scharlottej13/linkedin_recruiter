@@ -16,13 +16,7 @@ from utils.misc import (no_duplicates, test_no_duplicates,
 
 def get_latest_data():
     # data collected by Tom, thx Tom!
-    file = 'LinkedInRecruiter_dffromtobase_merged_gdp'
-    files = [x for x in listdir(get_input_dir()) if x.startswith(f'{file}')]
-    if len(files) == 1:
-        return files[0]
-    else:
-        # TODO build this out, not sure it matters right now
-        raise NotImplementedError
+    return '2021-05-07_LinkedInRecruiter_dffromtobase_merged_gdp_wr6.csv'
 
 
 def read_data():
@@ -171,7 +165,7 @@ def prep_language():
     ).explode('country_o').explode('country_d')
     blx['iso_o'] = blx['country_o'].map(blx_dict).fillna(blx['iso_o'])
     blx['iso_d'] = blx['country_d'].map(blx_dict).fillna(blx['iso_d'])
-    # and, of course, what about bel -> lux (and vice versa)?
+    # and, of course, append 2 rows for bel <-> lux
     x = pd.DataFrame(dict(zip(
         ['iso_o', 'iso_d', 'col', 'csl', 'cnl', 'prox1',
          'lp1', 'prox2', 'lp2'],
