@@ -39,11 +39,11 @@ plot_n_save_wrapper <- function(df, df1, color_vector,
       # add text for reg1
       circos.text(
         x = mean(xlim), y = ifelse(test = nchar(reg2) == 0, yes = 5.2, no = 6),
-        labels = reg1, facing = "bending", cex = 1.4
+        labels = reg1, facing = "bending", cex = 1.6
       )
       # add text for reg2
       circos.text(x = mean(xlim), y = 4.4,
-                  labels = reg2, facing = "bending", cex = 1.4)
+                  labels = reg2, facing = "bending", cex = 1.6)
       # Add ticks & labels
       circos.axis(
         h = "top",
