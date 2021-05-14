@@ -7,7 +7,7 @@ from datetime import datetime
 # eg seeing A -> B and B -> A not necessary
 
 
-def get_working_dir(custom_dir):
+def get_working_dir(custom_dir=None):
     pc = "N:/johnson/linkedin_recruiter"
     mac = "/Users/scharlottej13/Nextcloud/linkedin_recruiter"
     check_dirs = [pc, mac]
