@@ -23,10 +23,14 @@ def read_data():
     # first grab the column names we want
     keep_cols = set(pd.read_csv(
         path.join(get_input_dir(), get_latest_data()),
-        nrows=0).columns) - set(['Unnamed: 0', 'normalized1',
-                                 'normalized2', 'response'])
-    df = pd.read_csv(path.join(get_input_dir(), get_latest_data()),
-                     usecols=keep_cols)
+        nrows=0).columns) - set(
+            ['Unnamed: 0', 'normalized1', 'normalized2',
+             'response', 'maxgdp_to', 'maxgdp_from']
+        )
+    df = pd.read_csv(
+        path.join(get_input_dir(), get_latest_data()),
+        usecols=keep_cols
+    )
     replace_dict = {
         '_x': '_orig', '_y': '_dest', '_from': '_orig', 'population': 'pop',
         '_to': '_dest', 'linkedin': '', 'countrycode': 'iso3',
@@ -71,6 +75,24 @@ def prep_country_area():
         value=lambda x: x['Value'] * 10,
         iso3=lambda x: x['Area Code'].str.lower()
     ).set_index('iso3')['value'].to_dict()
+
+
+def prep_gdp():
+    """Clean up file with GDP."""
+    df = pd.read_csv(
+        path.join(
+            get_input_dir(),
+            'API_NY/API_NY.GDP.MKTP.CD_DS2_en_csv_v2_2001204.csv'
+        ), header=2, converters={'Country Code': lambda x: str.lower(x)}).drop(
+            ['Indicator Name', 'Indicator Code', 'Unnamed: 65'], axis=1
+        ).melt(id_vars=['Country Name', 'Country Code'],
+               var_name='year', value_name='gdp')
+    # get most recent year with not-null GDP values
+    df['max_year'] = df.loc[
+        df['gdp'].notnull()
+    ].groupby('Country Code')['year'].transform(max)
+    return df.query('year ==  max_year').set_index(
+        'Country Code')['gdp'].to_dict()
 
 
 def check_geo(cepii, maciej):
@@ -398,9 +420,11 @@ def add_metadata(df):
     """
     orig_cols = df.columns
     # (1) two new columns, separate for origin + destination
+    gdp_map = prep_gdp()
     area_map = prep_country_area()
     int_use = prep_internet_usage()
-    for k, v in {'area': area_map, 'internet': int_use, 'prop': ''}.items():
+    for k, v in {'area': area_map, 'internet': int_use,
+                 'gdp': gdp_map, 'prop': ''}.items():
         for x in ['orig', 'dest']:
             if k == 'prop':
                 df[f'{k}_{x}'] = df[f'users_{x}'] / df[f'pop_{x}']
