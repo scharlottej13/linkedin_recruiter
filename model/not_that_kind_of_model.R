@@ -4,6 +4,7 @@ library(tidyr)
 library(gravity)
 library(VGAM)
 
+
 get_parent_dir <- function() {
   os <- Sys.info()[["sysname"]]
   if (os == "Windows") {
@@ -14,23 +15,26 @@ get_parent_dir <- function() {
   normalizePath(parent_dir, mustWork = TRUE)
 }
 
-save_to_archive <- function(origname, active_dir) {
+save_to_archive <- function(name, active_dir) {
   archive_dir <- file.path(active_dir, "_archive")
-  split_name <- unlist(strsplit("xxx.csv", ".", fixed = T))
+  split_name <- unlist(strsplit(name, ".", fixed = T))
+  # append timestamp
   newname <- paste0(split_name[1], "_", Sys.Date(), ".", split_name[2])
-  file.copy(file.path(active_dir, origname), archive_dir)
-  file.rename(from = file.path(archive_dir, origname),
-    to = file.path(archive_dir, newname))
+  file.copy(file.path(active_dir, name), archive_dir)
+  file.rename(
+    from = file.path(archive_dir, name),
+    to = file.path(archive_dir, newname)
+  )
 }
 
 return_df <- function(df) {
-  # TODO does R have a builtin f'n for this?
   df
 }
 
 prep_data <- function(
   df, dep_var, factor_vars, log_vars, keep_vars, type, min_n,
-  min_dest_prop, global) {
+  min_dest_prop, global
+  ) {
   if (!global) {
     df <- df %>%
       filter(eu_plus == 1)
@@ -70,7 +74,7 @@ run_model <- function(df, dep_var, type, keep_vars) {
   if (type == "cohen") {
     # https://www.pnas.org/content/105/40/15269
     fit <- lm(formula, data = df)
-  } else if (type == 'nb') {
+  } else if (type == "nb") {
     fit <- vglm(formula, data = df, family = posnegbinomial())
   } else if (type == "poisson") {
     # ? decided no offset b/c one user can want to move to > 1 location
@@ -104,8 +108,8 @@ add_fit_quality <- function(fit, df) {
 }
 
 save_model <- function(
-  df, suffix, out_dir = file.path(BASE_DIR, "model-outputs"),
-  dep_var = "flow_median", log_vars = NULL, factors = NULL,
+  df, suffix, base_dir, dep_var = "flow_median",
+  log_vars = NULL, factors = NULL,
   other_numeric = NULL, type = "cohen", min_n=0,
   min_dest_prop = 0.05, global = FALSE
 ) {
@@ -119,6 +123,7 @@ save_model <- function(
       filename <- paste0(type, "_eu_", suffix)
     }
     # save model summary output as a text file
+    out_dir <- file.path(base_dir, "model-outputs")
     sink(file.path(out_dir, paste0(filename, ".txt")))
     print(summary(fit))
     sink()
@@ -132,17 +137,21 @@ save_model <- function(
   }
 
 # get working directories
-BASE_DIR <- get_parent_dir()
+data_dir <- get_parent_dir()
 # read in data
-df <- read.csv(file.path(BASE_DIR, "processed-data", "variance.csv"))
+df <- read.csv(
+  file.path(data_dir, "processed-data", "variance.csv")
+)
+
 save_model(
-  df, "dist_biggest_cities_plus",
+  df, "dist_biggest_cities_plus_gdp", data_dir,
   global = FALSE,
   log_vars = c(
     "dist_biggest_cities", "users_orig_median",
-    "users_dest_median", "area_dest", "area_orig"
+    "users_dest_median", "area_dest", "area_orig", "gdp_dest", "gdp_orig"
   ), other_numeric = c("csl", "contig")
 )
+
 # save_model(df, "base_dist_pop_weighted_plus_colony",
 #   global = TRUE,
 #   log_vars = c(
