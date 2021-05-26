@@ -104,7 +104,7 @@ def prep_data(iso, x, y):
     # splitting the subplots is a bit manual, try for 5 splits first
     bins_dict = defaultdict(lambda: 5)
     bins_dict.update({
-        'pol': [0, .0001, .000217, .0006, .001, 1],
+        # 'pol': [0, .0001, .000217, .0006, .001, 1],
         'ita': [0, .00002, .00004, .0014, 1],
         'deu': [0, .00003, .00004, .00008, .0015, 1]
     })
