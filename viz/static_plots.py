@@ -4,11 +4,11 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from os import path, mkdir
 from matplotlib.patches import Rectangle
-from matplotlib.colors import LinearSegmentedColormap
+# from matplotlib.colors import LinearSegmentedColormap
 from utils.io import get_input_dir, _get_working_dir
 from scipy import stats
 import statsmodels.stats.api as sms
-from math import e
+# from math import e
 
 
 def get_output_dir(custom_dir=None, sub_dir=None):
@@ -53,8 +53,9 @@ def pairplot(df, plt_vars, plt_name, output_dir):
     # TODO part of this is getting cut off? and the legend looks funky
     plt.figure(figsize=(10, 10))
     g = sns.pairplot(
-        df.sort_values(by='query_date'), vars=plt_vars + ['flow'], hue='query_date',
-        palette='crest', diag_kws=dict(fill=False), corner=True, dropna=True
+        df.sort_values(by='query_date'), vars=plt_vars + ['flow'],
+        hue='query_date', palette='crest', diag_kws=dict(fill=False),
+        corner=True, dropna=True
     )
     plt.savefig(f"{output_dir}/{plt_name}_scatter.png", dpi=300)
     plt.close()
@@ -65,9 +66,10 @@ def corr_matrix(df, loc_str, suffix, output_dir, type='pearson'):
         prefix = 'p'
         title_str = "Pearson's correlation"
         cols = [x for x in df.columns if 'median' in x] + ['flow_variation'] + \
-            sorted([x for x in df.columns if 'dist' in x or 'area' in x or
-                    (('hdi' in x or 'gdp' in x) and 'bin' not in x) or 'internet' in x]) \
-            + ['csl', 'cnl', 'prox2']
+            sorted(
+                [x for x in df.columns if 'dist' in x or 'area' in x or
+                 (('hdi' in x or 'gdp' in x) and 'bin' not in x)
+                 or 'internet' in x]) + ['csl', 'cnl', 'prox2']
     elif type == 'spearman':
         prefix = 'sp'
         title_str = "Spearman's rank"
@@ -75,7 +77,7 @@ def corr_matrix(df, loc_str, suffix, output_dir, type='pearson'):
     else:
         ValueError, f"Type must be spearman or pearson, but was: {type}"
     corr = df[cols].corr(type)
-    plt.figure(figsize=(10,10))
+    plt.figure(figsize=(10, 10))
     ax = sns.heatmap(
         corr, mask=np.triu(corr), annot=True, fmt='.1g',
         vmin=-1, vmax=1, center=0, square=True,
@@ -83,7 +85,9 @@ def corr_matrix(df, loc_str, suffix, output_dir, type='pearson'):
     )
     ax.set_xticklabels(cols, rotation=45, horizontalalignment='right')
     ax.set_title(f"{loc_str} {title_str} coefficients")
-    ax.add_patch(Rectangle((0, 1), 1, len(cols), fill=False, edgecolor='blue', lw=3))
+    ax.add_patch(Rectangle(
+        (0, 1), 1, len(cols), fill=False, edgecolor='blue', lw=3)
+    )
     plt.tight_layout()
     plt.savefig(f"{output_dir}/{prefix}_corr_matrix_{suffix}.png", dpi=300)
     plt.close()
@@ -95,8 +99,10 @@ def data_availability(outdir):
             **{'Pair Type': pair_type, 'Locations': loc_level}
         ).rename(columns={'query_date': 'Date'})
     df_list = []
-    recip_str_dict = {'': 'all', '_recip_pairs': 'reciprocal pairs (across dates)',
-                      '_by_date_recip_pairs': 'reciprocal pairs(by date)'}
+    recip_str_dict = {
+        '': 'all', '_recip_pairs': 'reciprocal pairs (across dates)',
+        '_by_date_recip_pairs': 'reciprocal pairs(by date)'
+    }
     for suffix, str_title in recip_str_dict.items():
         for loc_level in ['EU+UK', 'Global']:
             if loc_level == 'EU+UK':
@@ -208,9 +214,9 @@ def make_line_plt(data, value, title_str, suffix, outdir):
 def main(save_hists=True, save_heatmaps=True, save_pairplots=False):
     # save this first, shows what data went into each plot
     data_availability(get_output_dir())
-    # TODO feeling a plotting class kind of thing 
+    # TODO feeling a plotting class kind of thing
     categ_cols = ['contig', 'comlang_ethno', 'colony', 'comcol',
-                'curcol', 'col45', 'col', 'smctry', 'prox1']
+                  'curcol', 'col45', 'col', 'smctry', 'prox1']
     cont_cols = [
         'flow', 'net_flow', 'net_rate_100', 'users_orig', 'users_dest',
         'pop_orig', 'gdp_orig', 'hdi_orig', 'pop_dest', 'gdp_dest', 'hdi_dest',
@@ -221,7 +227,7 @@ def main(save_hists=True, save_heatmaps=True, save_pairplots=False):
     log_cols = \
         [f'{x}_{y}' for y in ['dest', 'orig']
             for x in ['users', 'pop', 'gdp', 'area']] \
-    + ['flow', 'prox2', 'cnl', 'csl'] + \
+        + ['flow', 'prox2', 'cnl', 'csl'] + \
         [x for x in cont_cols if 'dist' in x]
     if save_heatmaps:
         df = pd.read_csv(f'{get_input_dir()}/variance.csv')
