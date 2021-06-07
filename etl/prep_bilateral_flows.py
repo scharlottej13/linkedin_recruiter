@@ -539,7 +539,7 @@ def main(update_chord_diagram):
     df.drop('recip', axis=1).pipe(get_variation, meta_cols).pipe(
         save_output, 'variance')
     if update_chord_diagram:
-        for grp_var in ['bin_hdi', 'bin_gdp', 'midreg', 'subregion']:
+        for grp_var in ['bin_hdi', 'bin_gdp', 'midregion', 'subregion']:
             save_output(collapse(df, grp_var), f'chord_diagram_{grp_var}')
             save_output(
                 collapse(df.query('recip == 1'), grp_var),
