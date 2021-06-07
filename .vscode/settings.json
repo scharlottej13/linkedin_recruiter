@@ -10,7 +10,11 @@
     ],
 
     "[r]": {
-        "editor.formatOnSave": false
+        "editor.formatOnSave": false,
+        // Controls the rendering size of tabs in characters. If set to auto, the value will be guessed based on the opened file.
+        "editor.tabSize": 2,
+        // Controls if the editor will insert spaces for tabs. If set to auto, the value will be guessed based on the opened file.
+        "editor.insertSpaces": true
     },
     "r.bracketedPaste": true,
     "r.rterm.mac": "/Users/scharlottej13/anaconda3/envs/linkedin_recruiter/bin/radian",
