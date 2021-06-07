@@ -101,6 +101,11 @@ def line_plt(df, iso, avg_prop, avg_n, x, y, split=None):
 
 def prep_data(iso, x, y):
     df = pd.read_csv(f"{get_output_dir()}/model_input.csv")
+    # restrict to countries that show up at least a few times
+    keep_isos = list(
+        df.query(f"iso3_{x} == '{iso}'").groupby(
+            f'iso3_{y}'
+        )['flow'].count().iloc[lambda x: x.values > 3].index)
     # splitting the subplots is a bit manual, try for 5 splits first
     bins_dict = defaultdict(lambda: 5)
     bins_dict.update({
@@ -108,7 +113,7 @@ def prep_data(iso, x, y):
         'ita': [0, .00002, .00004, .0014, 1],
         'deu': [0, .00003, .00004, .00008, .0015, 1]
     })
-    return df.query(f"iso3_{x} == '{iso}'").assign(
+    return df.query(f"iso3_{x} == '{iso}' & iso3_{y} in {keep_isos}").assign(
         prop=df['flow'] / df[f'users_{x}'],
         cutoff=lambda x: pd.qcut(
             x['prop'], bins_dict[iso], labels=False
