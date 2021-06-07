@@ -5,17 +5,17 @@ import matplotlib.pyplot as plt
 from os import path, mkdir
 from matplotlib.patches import Rectangle
 # from matplotlib.colors import LinearSegmentedColormap
-from utils.io import get_input_dir, _get_working_dir
+from utils.io import get_output_dir, get_working_dir
 from scipy import stats
 import statsmodels.stats.api as sms
 # from math import e
 
 
-def get_output_dir(custom_dir=None, sub_dir=None):
+def get_plot_dir(custom_dir=None, sub_dir=None):
     if sub_dir:
-        outdir = path.join(_get_working_dir(custom_dir), 'plots', sub_dir)
+        outdir = path.join(get_working_dir(custom_dir), 'plots', sub_dir)
     else:
-        outdir = path.join(_get_working_dir(custom_dir), 'plots')
+        outdir = path.join(get_working_dir(custom_dir), 'plots')
     if not path.exists(outdir):
         mkdir(outdir)
     return outdir
@@ -106,11 +106,11 @@ def data_availability(outdir):
     for suffix, str_title in recip_str_dict.items():
         for loc_level in ['EU+UK', 'Global']:
             if loc_level == 'EU+UK':
-                df = pd.read_csv(f"{get_input_dir()}/model_input{suffix}.csv"
+                df = pd.read_csv(f"{get_output_dir()}/model_input{suffix}.csv"
                     ).query('eu_plus == 1')
                 df_list.append(make_it_nice(df, str_title, loc_level))
             else:
-                df = pd.read_csv(f"{get_input_dir()}/model_input{suffix}.csv")
+                df = pd.read_csv(f"{get_output_dir()}/model_input{suffix}.csv")
                 df_list.append(make_it_nice(df, str_title, loc_level))
     pd.concat(df_list).pivot_table(
         index='Date', columns=['Locations', 'Pair Type'],
@@ -122,15 +122,18 @@ def variation_heatmap(df, outdir):
     df = df.assign(
         flow_variation_pct=lambda x: x['flow_variation'] * 100
     )
+    # order rows/columns by number of LinkedIn users
+    order = df.sort_values(by='users_dest_median', ascending=False)[
+        'country_dest'].drop_duplicates().values
     num_dates = df['flow_count'].iloc[0]
     heatmap_kws = {
         'square': True, 'linewidths': .5, 'annot': True,
-        'fmt': '.1g', 'cbar_kws': {"shrink": .5},
+        'fmt': '.0f', 'cbar_kws': {"shrink": .5},
         'cmap': sns.color_palette("viridis", as_cmap=True)
     }
     for metric in ['flow_variation_pct', 'flow_median']:
         if metric == 'flow_variation_pct':
-            metric_str = 'Coefficient of Variance (%)'
+            metric_str = 'Coefficient of Variation (%)'
         if metric == 'flow_median':
             metric_str = 'Median'
             heatmap_kws.update({'annot': None})
@@ -138,15 +141,17 @@ def variation_heatmap(df, outdir):
             ['country_orig', 'country_dest', metric]
         ].rename(
             columns={'country_orig': 'Origin Country',
-                    'country_dest': 'Destination Country'}
-        ).pivot_table(metric, 'Origin Country', 'Destination Country')
+                     'country_dest': 'Destination Country'}
+        ).pivot_table(metric, 'Origin Country', 'Destination Country').reindex(
+            order, axis=0).reindex(order, axis=1)
         # create figure
         plt.figure(figsize=(10, 10))
         # make plot
         ax = sns.heatmap(recip_pairs, **heatmap_kws)
         # Let the horizontal axis labeling appear on top
         ax.xaxis.set_label_position('top')
-        ax.tick_params(top=True, bottom=False, labeltop=True, labelbottom=False)
+        ax.tick_params(top=True, bottom=False, labeltop=True,
+                       labelbottom=False)
         ax.set_title(
             f'{metric_str} across {num_dates} collection dates', fontsize=15)
         # add '%' to colorbar for CV %
@@ -170,7 +175,7 @@ def get_top_countries(df, value, country_col='country_dest', n=15):
 def plt_over_time(outdir):
     """Prep data for line plot over time."""
     for value_col in ['users_dest', 'goers']:
-        df = pd.read_csv(f"{get_input_dir()}/goers.csv").dropna(
+        df = pd.read_csv(f"{get_output_dir()}/goers.csv").dropna(
             subset=['users_dest']).sort_values(
                 by=['date_key', value_col], ascending=[True, False])
         n = 15
@@ -211,9 +216,9 @@ def make_line_plt(data, value, title_str, suffix, outdir):
     plt.close()
 
 
-def main(save_hists=True, save_heatmaps=True, save_pairplots=False):
+def main(save_hists=False, save_heatmaps=True, save_pairplots=False):
     # save this first, shows what data went into each plot
-    data_availability(get_output_dir())
+    # data_availability(get_plot_dir())
     # TODO feeling a plotting class kind of thing
     categ_cols = ['contig', 'comlang_ethno', 'colony', 'comcol',
                   'curcol', 'col45', 'col', 'smctry', 'prox1']
@@ -230,8 +235,8 @@ def main(save_hists=True, save_heatmaps=True, save_pairplots=False):
         + ['flow', 'prox2', 'cnl', 'csl'] + \
         [x for x in cont_cols if 'dist' in x]
     if save_heatmaps:
-        df = pd.read_csv(f'{get_input_dir()}/variance.csv')
-        outdir = get_output_dir(sub_dir='recip')
+        df = pd.read_csv(f'{get_output_dir()}/variance_recip_pairs.csv')
+        outdir = get_plot_dir(sub_dir='recip')
         for loc in ['EU+UK', 'Global']:
             if loc == 'EU+UK':
                 data = df[df['eu_plus'] == 1]
@@ -241,12 +246,11 @@ def main(save_hists=True, save_heatmaps=True, save_pairplots=False):
             corr_matrix(data, loc, loc.lower(), outdir)
             corr_matrix(data, loc, loc.lower(), outdir, type='spearman')
     for col in [None, 'recip', 'by_date_recip']:
-        outdir = get_output_dir(sub_dir=col)
+        outdir = get_plot_dir(sub_dir=col)
+        df = pd.read_csv(f"{get_output_dir()}/model_input.csv")
         if col is not None:
-            df = pd.read_csv(f"{get_input_dir()}/model_input_{col}_pairs.csv")
             df = log_tform(df, log_cols + ['net_flow', 'net_rate_100'])
         else:
-            df = pd.read_csv(f"{get_input_dir()}/model_input.csv")
             df = log_tform(df, log_cols)
         eu = df[df['eu_plus'] == 1]
         if save_hists:
@@ -262,7 +266,7 @@ def main(save_hists=True, save_heatmaps=True, save_pairplots=False):
         #         print(f'Global dataset:\n{ttest(df, x)}')
         #         print(f'EU dataset:\n{ttest(eu, x)}')
     # # TODO this line plot is not quite right
-    # # plt_over_time(get_output_dir())
+    # # plt_over_time(get_plot_dir())
 
 
 if __name__ == "__main__":
