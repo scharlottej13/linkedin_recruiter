@@ -1,7 +1,11 @@
-# https://gjabel.wordpress.com/2016/05/18/updated-circular-plots-for-directional-bilateral-migration-data/
-# https://www.oeaw.ac.at/fileadmin/subsites/Institute/VID/PDF/Publications/Working_Papers/WP2016_02.pdf
+# Set of functions to easily use circilize package
+# (heavily influenced by migest package)
+# to create chord diagrams
+# other resources:
 # https://github.com/guyabel/migest/blob/master/demo/cfplot_reg2.R
-# Gu, Z. (2014) circlize implements and enhances circular visualization in R. Bioinformatics.
+# https://www.streetlightdata.com/chord-diagrams-visualizing-data/?type=blog/
+# https://jokergoo.github.io/circlize_book/book/advanced-usage-of-chorddiagram.html
+
 library(circlize)
 library(dplyr)
 
@@ -45,7 +49,8 @@ plot_n_save_wrapper <- function(
   circos.par(start.degree = 90, gap.degree = 4, track.margin = c(-0.1, 0.1),
              points.overflow.warning = FALSE)
   chordDiagram(
-    x = df, grid.col = color_vector, transparency = 0.25, order = df1$loc_name,
+    x = df, grid.col = color_vector, transparency = 0.25,
+    # order = df1$loc_name,
     directional = 1, direction.type = c("arrows", "diffHeight"),
     diffHeight  = -0.04, annotationTrack = "grid",
     link.arr.type = "big.arrow", link.sort = TRUE, link.largest.ontop = TRUE)
@@ -55,27 +60,32 @@ plot_n_save_wrapper <- function(
     panel.fun = function(x, y) {
       # function loops through each 'sector.index'
       xlim <- get.cell.meta.data("xlim")
+      print(xlim)
       sector_index <- get.cell.meta.data("sector.index")
+      print(sector_index)
       # need this since labels differ from sector.index values
       # add text for loc1
       loc1 <- df1$loc1[df1$loc_name == sector_index]
       loc2 <- df1$loc2[df1$loc_name == sector_index]
       circos.text(
         x = mean(xlim), y = ifelse(test = nchar(loc2) == 0, yes = 5.2, no = 6),
-        labels = loc1, facing = "bending", cex = 1.6
+        labels = loc1, facing = "bending", cex = 1.6, niceFacing = TRUE
       )
       # and then for loc2
-      circos.text(x = mean(xlim), y = 4.4,
+      circos.text(x = mean(xlim), y = 4.4, niceFacing = TRUE,
                   labels = loc2, facing = "bending", cex = 1.6)
       # Add ticks & labels
-      circos.axis(
-        h = "top",
-        major.at = seq(from = 0, to = xlim[2],
-                      by = ifelse(test = xlim[2] > 10, yes = 2, no = 1)),
-        minor.ticks = 1, labels.niceFacing = FALSE)
+      # circos.axis(
+      #   h = "top",
+      #   major.at = seq(from = 0, to = xlim[2],
+      #                 by = ifelse(test = xlim[2] > 10, yes = 2, no = 1)),
+      #   # major.at = seq(from = 0, to = xlim[2], by = 25),
+      #   # minor.ticks = 10,
+      #   minor.ticks = 1,
+      #   labels.niceFacing = FALSE)
     }
   )
   dev.off()
   circos.clear()
-  copy2archive(outpath)
+  # copy2archive(outpath)
 }

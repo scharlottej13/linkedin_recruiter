@@ -380,21 +380,26 @@ def get_pct_change(df, diff_col='query_date'):
 
 
 def get_variation(
-    df, add_cols, by_cols=['country_orig', 'country_dest'],
+    df, add_cols=None, by_cols=['country_orig', 'country_dest'],
     across_col='query_date',
     value_cols=['flow', 'net_flow', 'net_rate_100', 'users_orig',
                 'users_dest', 'prop_orig', 'prop_dest', 'rank', 'rank_norm']
 ):
-    assert not df[by_cols + [across_col]].duplicated().values.any()
-    # def rsem(x):
-    #     return sem(x) / np.mean(x)
+    id_cols = ['country_orig', 'country_dest']
+    if len(set(by_cols) - set(id_cols)) == 0:
+        assert not df[by_cols + [across_col]].duplicated().values.any()
+    else:
+        df = df.groupby(by_cols + [across_col])[value_cols].sum().reset_index()
     v_df = df.groupby(by_cols)[value_cols].agg(
         ['std', 'mean', 'median', 'count', cv]
     ).reset_index()
     v_df.columns = ['_'.join(x) if '' not in x
                     else ''.join(x) for x in v_df.columns]
-    add_cols = list(set(add_cols) - set(value_cols))
-    return v_df.merge(df[by_cols + add_cols].drop_duplicates())
+    if add_cols:
+        add_cols = list(set(add_cols) - set(value_cols))
+        return v_df.merge(df[by_cols + add_cols].drop_duplicates())
+    else:
+        return v_df
 
 
 def drop_bad_rows(df):
@@ -492,6 +497,21 @@ def fix_query_date(df, cutoff=np.timedelta64(10, 'D')):
     return df
 
 
+def prep_chord_diagram(df, loc_level, value_col='flow_median'):
+    """Prep dataframe to go into the chord diagram.
+    Needs two columns for 1) proportion of total by destination
+    and 2) proportion of total by origin.
+    """
+    df['dest_totals'] = df.groupby(
+        f'{loc_level}_dest')[value_col].transform(sum)
+    df = df.set_index(f'{loc_level}_dest')[['dest_totals']].merge(
+        df, left_index=True, right_on=f'{loc_level}_orig',
+        suffixes=('_orig', '_dest'))
+    df['pct_dest'] = (df[value_col] / df['dest_totals_dest']) * 100
+    df['pct_orig'] = (df[value_col] / df['dest_totals_orig']) * 100
+    return df.drop(['dest_totals_dest', 'dest_totals_orig'], axis=1)
+
+
 def data_validation(
     df, id_cols=['country_orig', 'country_dest', 'query_date'],
     value_col='flow'
@@ -509,15 +529,6 @@ def data_validation(
         df = df.drop_duplicates(subset=id_cols, ignore_index=True)
     assert df[value_col].dtype == int
     return df
-
-
-def collapse(df, var, id_cols=None, value_col='flow'):
-    if id_cols is None:
-        id_cols = [x for x in df.columns if (var in x)]
-    return df.groupby(
-        id_cols + ['query_date']
-    )[value_col].sum().reset_index().groupby(
-        id_cols)[value_col].median().reset_index()
 
 
 def main(update_chord_diagram):
@@ -540,11 +551,15 @@ def main(update_chord_diagram):
         save_output, 'variance')
     if update_chord_diagram:
         for grp_var in ['bin_hdi', 'bin_gdp', 'midregion', 'subregion']:
-            save_output(collapse(df, grp_var), f'chord_diagram_{grp_var}')
-            save_output(
-                collapse(df.query('recip == 1'), grp_var),
-                f'chord_diagram_{grp_var}_recip'
-            )
+            by_cols = [f'{grp_var}_orig', f'{grp_var}_dest']
+            value_col = ['flow']
+            (df.pipe(get_variation, by_cols=by_cols, value_cols=value_col)
+            #    .pipe(prep_chord_diagram, loc_level=grp_var)
+               .pipe(save_output, f'chord_diagram_{grp_var}'))
+            (df.query('recip == 1')
+               .pipe(get_variation, by_cols=by_cols, value_cols=value_col)
+            #    .pipe(prep_chord_diagram, loc_level=grp_var)
+               .pipe(save_output, f'chord_diagram_{grp_var}_recip'))
 
 
 if __name__ == "__main__":
