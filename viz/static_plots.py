@@ -120,34 +120,41 @@ def data_availability(outdir):
 
 def variation_heatmap(df, outdir):
     df = df.assign(
-        flow_variation_pct=lambda x: x['flow_variation'] * 100
+        flow_variation_pct=lambda x: x['flow_variation'] * 100,
+        flow_pct=(df['flow_median'] / df['flow_median'].sum()) * 100
     )
     # order rows/columns by number of LinkedIn users
     order = df.sort_values(by='users_dest_median', ascending=False)[
         'country_dest'].drop_duplicates().values
     num_dates = df['flow_count'].iloc[0]
     heatmap_kws = {
-        'square': True, 'linewidths': .5, 'annot': True,
+        'square': True,
+        'linewidths': 1,
+        'annot': True,
         'fmt': '.0f', 'cbar_kws': {"shrink": .5},
         'cmap': sns.color_palette("viridis", as_cmap=True)
     }
-    for metric in ['flow_variation_pct', 'flow_median']:
-        if metric == 'flow_variation_pct':
-            metric_str = 'Coefficient of Variation (%)'
-        if metric == 'flow_median':
-            metric_str = 'Median'
-            heatmap_kws.update({'annot': None})
-        recip_pairs = df[
+    for metric in ['flow_variation_pct', 'flow_median', 'flow_pct']:
+        # quick data prep
+        matrix_df = df[
             ['country_orig', 'country_dest', metric]
         ].rename(
             columns={'country_orig': 'Origin Country',
                      'country_dest': 'Destination Country'}
-        ).pivot_table(metric, 'Origin Country', 'Destination Country').reindex(
-            order, axis=0).reindex(order, axis=1)
+        ).pivot_table(
+            metric, 'Origin Country', 'Destination Country'
+        ).reindex(order, axis=0).reindex(order, axis=1)
         # create figure
-        plt.figure(figsize=(10, 10))
+        plt.figure(figsize=(12, 12))
+        if metric == 'flow_variation_pct':
+            metric_str = 'Coefficient of Variation (%)'
+        if metric == 'flow_pct':
+            metric_str = 'Median %'
+        if metric == 'flow_median':
+            metric_str = 'Median number'
+            heatmap_kws.update({'annot': None})
         # make plot
-        ax = sns.heatmap(recip_pairs, **heatmap_kws)
+        ax = sns.heatmap(matrix_df, **heatmap_kws)
         # Let the horizontal axis labeling appear on top
         ax.xaxis.set_label_position('top')
         ax.tick_params(top=True, bottom=False, labeltop=True,
@@ -220,8 +227,8 @@ def main(save_hists=False, save_heatmaps=True, save_pairplots=False):
     # save this first, shows what data went into each plot
     # data_availability(get_plot_dir())
     # TODO feeling a plotting class kind of thing
-    categ_cols = ['contig', 'comlang_ethno', 'colony', 'comcol',
-                  'curcol', 'col45', 'col', 'smctry', 'prox1']
+    # categ_cols = ['contig', 'comlang_ethno', 'colony', 'comcol',
+    #               'curcol', 'col45', 'col', 'smctry', 'prox1']
     cont_cols = [
         'flow', 'net_flow', 'net_rate_100', 'users_orig', 'users_dest',
         'pop_orig', 'gdp_orig', 'hdi_orig', 'pop_dest', 'gdp_dest', 'hdi_dest',
@@ -235,16 +242,25 @@ def main(save_hists=False, save_heatmaps=True, save_pairplots=False):
         + ['flow', 'prox2', 'cnl', 'csl'] + \
         [x for x in cont_cols if 'dist' in x]
     if save_heatmaps:
-        df = pd.read_csv(f'{get_output_dir()}/variance_recip_pairs.csv')
-        outdir = get_plot_dir(sub_dir='recip')
-        for loc in ['EU+UK', 'Global']:
-            if loc == 'EU+UK':
-                data = df[df['eu_plus'] == 1]
-                variation_heatmap(data, outdir)
-            else:
-                data = df.copy()
-            corr_matrix(data, loc, loc.lower(), outdir)
-            corr_matrix(data, loc, loc.lower(), outdir, type='spearman')
+        for recip in [True, False]:
+            suffix = "_recip_pairs" * recip
+            df = pd.read_csv(f'{get_output_dir()}/variance{suffix}.csv')
+            outdir = get_plot_dir(sub_dir='recip' * recip)
+            for loc in ['Europe', 'Global']:
+                if loc == 'Europe':
+                    min_users = 200000
+                    data = df[
+                        (df['subregion_dest'].str.contains('Europe') &
+                         df['subregion_orig'].str.contains('Europe')) &
+                        ((df['users_orig_median'] >= min_users) &
+                         (df['users_dest_median'] >= min_users))
+                    ]
+                    # only make these for subregions
+                    variation_heatmap(data, outdir)
+                else:
+                    data = df.copy()
+                # corr_matrix(data, loc, loc.lower(), outdir)
+                # corr_matrix(data, loc, loc.lower(), outdir, type='spearman')
     for col in [None, 'recip', 'by_date_recip']:
         outdir = get_plot_dir(sub_dir=col)
         df = pd.read_csv(f"{get_output_dir()}/model_input.csv")
