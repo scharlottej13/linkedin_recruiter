@@ -1,3 +1,4 @@
+from sklearn import linear_model
 import pandas as pd
 import os
 from datetime import datetime
@@ -8,26 +9,27 @@ from utils.io import get_working_dir
 class ModelOptions:
     def __init__(self):
 
+        def model_version_id(self):
+            # add 1 to the last model version id
+            return pd.read_csv(
+                f"{get_working_dir()}/model-outputs/model_versions.csv"
+            ).sort_values(by='version_id')['version_id'].max() + 1
 
-    def model_version_id(self):
-        # add 1 to the last model version id
-        return pd.read_csv(
-            f"{get_working_dir()}/model-outputs/model_versions.csv"
-        ).sort_values(by='version_id')['version_id'].max() + 1
+        def timestamp():
+            return datetime.now().date()
 
-    def timestamp():
-        return datetime.now().date()
+        def data_version():
+            return datetime.fromtimestamp(os.path.getctime(
+                f"{get_working_dir()}/processed-data/model_input.csv"
+            )).date()
 
-    def data_version():
-        return datetime.fromtimestamp(os.path.getctime(
-            f"{get_working_dir()}/processed-data/model_input.csv"
-        )).date()
+        def description(self):
+            return f"{self.location}-{self.model_type}-{self.description}"
 
-    def description(self):
-        return f"{self.location}-{self.model_type}-{self.description}"
+        def formula(self):
+            raise NotImplementedError
 
-    def formula(self):
-        raise NotImplementedError
+
 
 
 if __name__ == "__main__":

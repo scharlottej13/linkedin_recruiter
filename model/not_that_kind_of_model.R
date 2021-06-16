@@ -1,18 +1,17 @@
 library(MASS)
-library(dplyr)
-library(tidyr)
-library(gravity)
-library(VGAM)
+library(tidyverse)
+library(broom)
 
 
 get_parent_dir <- function() {
   os <- Sys.info()[["sysname"]]
+  user <- tolower(Sys.info()[["user"]])
   if (os == "Windows") {
-    parent_dir <- "N:\\johnson\\linkedin_recruiter"
+    parent_dir <- file.path("N:", user, "linkedin_recruiter")
   } else {
-    parent_dir <- "/Users/scharlottej13/Nextcloud/linkedin_recruiter"
+    parent_dir <- file.path("Users", user, "Nextcloud", "linkedin_recruiter")
   }
-  normalizePath(parent_dir, mustWork = TRUE)
+  parent_dir
 }
 
 save_to_archive <- function(name, active_dir) {
@@ -61,10 +60,8 @@ prep_data <- function(
 }
 
 run_model <- function(df, dep_var, type, keep_vars) {
-  # Run a model of flow ~ country_destination + country_origin
   # log_vars: independent variables that will be log transformed
-  # other_factors: independent categorical variables in addition to
-  # country_dest, country_orig)
+  # other_factors: independent categorical variables
   # other_numeric: independent numeric variables that are not log transformed
   # type: type of model to run, one of cohen, poisson, or gravity
   # min_n: minimum value for the count of the dependent variable
@@ -81,7 +78,7 @@ run_model <- function(df, dep_var, type, keep_vars) {
     # fit <- glm(formula, family = poisson(), data = df)
     fit <- vglm(formula, data = df, family = pospoisson())
   } else if (type == "gravity") {
-    # TO DO test/build this part more (as needed)
+    # TO DO test/build this part more (if needed)
     fit <- ddm(
       dependent_variable = dep_var, distance = "distance",
       code_origin = "country_orig", code_destination = "country_dest",
@@ -92,19 +89,6 @@ run_model <- function(df, dep_var, type, keep_vars) {
     print("Model type needs to be one of 'cohen', 'poisson', 'gravity'")
  }
  return(fit)
-}
-
-add_fit_quality <- function(fit, df) {
-  df %>%
-    mutate(
-      r2 = fit$r.squared,
-      adj_r2 = fit$adj.r.squared,
-      resids = residuals(fit),
-      sresids = rstandard(fit),
-      preds = fit$fitted.values,
-      cooks_dist = cooks.distance(fit),
-      hat_values = hatvalues(fit)
-    )
 }
 
 save_model <- function(
@@ -124,24 +108,23 @@ save_model <- function(
     }
     # save model summary output as a text file
     out_dir <- file.path(base_dir, "model-outputs")
-    sink(file.path(out_dir, paste0(filename, ".txt")))
-    print(summary(fit))
-    sink()
-    write.csv(add_fit_quality(fit, model_df),
-      file.path(out_dir, paste0(filename, ".csv")),
-      row.names = FALSE
+    write.csv(
+      broom::tidy(fit) %>% add_column(confint(fit), .after = "estimate"),
+      file.path(out_dir, paste0(filename, "_betas.csv"))
     )
-    for (file in c(paste0(filename, ".txt"), paste0(filename, ".csv"))) {
-      save_to_archive(file, out_dir)
-    }
+    write.csv(broom::glance(fit), file.path(out_dir, paste0(filename, "_summary.csv")))
+    write.csv(broom::augment(fit),
+      file.path(out_dir, paste0(filename, ".csv"))
+    )
+    for (file in c(
+        paste0(filename, "_betas.csv"),
+        paste0(filename, "_summary.csv"),
+        paste0(filename, ".csv"))
+    ) {save_to_archive(file, out_dir)}
   }
 
-# get working directories
 data_dir <- get_parent_dir()
-# read in data
-df <- read.csv(
-  file.path(data_dir, "processed-data", "variance.csv")
-)
+df <- read.csv(file.path(data_dir, "processed-data", "variance.csv"))
 
 save_model(
   df, "dist_biggest_cities_plus_gdp", data_dir,
@@ -151,30 +134,3 @@ save_model(
     "users_dest_median", "area_dest", "area_orig", "gdp_dest", "gdp_orig"
   ), other_numeric = c("csl", "contig")
 )
-
-# save_model(df, "base_dist_pop_weighted_plus_colony",
-#   global = TRUE,
-#   log_vars = c(
-#     "dist_pop_weighted", "users_orig_median",
-#     "users_dest_median", "area_dest", "area_orig"
-#   ), other_numeric = c("csl", "contig", "colony")
-# )
-# save_model(df, "base_dist_pop_weighted_plus_col45",
-#   global = TRUE,
-#   log_vars = c(
-#     "dist_pop_weighted", "users_orig_median",
-#     "users_dest_median", "area_dest", "area_orig"
-#   ), other_numeric = c("csl", "contig", "col45")
-# )
-
-# # poisson
-# fit2 <- run_model(df,
-#   log_vars = c("distance"), other_factors = c("query_date"),
-#   other_numeric = c("prop_users_orig", "prop_users_dest"), type = "poisson"
-# )
-# should I use outliers or coefficients to figure out which countries are interesting?
-# next steps:
-# understand meaning of coefficients
-# add "labor market conditions"? see Bijak et al. ref (or other covariates)
-# replace w/ population "weighted average" by age?
-# [^ maybe useful? perhaps if the linkedin users are younger then they are also more likely to have aspirations?]
