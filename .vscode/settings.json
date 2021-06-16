@@ -2,7 +2,10 @@
     "python.linting.pylintEnabled": false,
     "python.linting.flake8Enabled": true,
     "python.linting.enabled": true,
-    "python.pythonPath": "/Users/scharlottej13/anaconda3/envs/linkedin_recruiter/bin/python",
+    // @sync os=linux
+    // "python.pythonPath": "/Users/scharlottej13/anaconda3/envs/linkedin_recruiter/bin/python",
+    // @sync os=windows
+    "python.pythonPath": "C:\\ProgramData\\Anaconda3\\envs\\linkedin_recruiter\\python.exe",
     "python.formatting.autopep8Args": [
         "--max-line-length",
         "80",
