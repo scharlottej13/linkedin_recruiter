@@ -4,29 +4,16 @@ from datetime import datetime
 import argparse
 from utils.io import get_working_dir
 
-"""
-version_id: auto-increment
-timestamp: set in code
-data_version: comes from archive folder of model input files
 
-formula: string [need a f'n]
-
-type: set arg string
-location: set arg string
-description: string
-min_n: set arg
-min_dest_prop: set arg
-"""
-
-
-class ModelVersions:
+class ModelOptions:
     def __init__(self):
-        self.last_model_version_id = pd.read_csv(
-            f"{get_working_dir()}/model-outputs/model_versions.csv"
-        ).sort_values(by='version_id').iloc[-1]['version_id']
+
 
     def model_version_id(self):
-        return self.last_model_version_id + 1
+        # add 1 to the last model version id
+        return pd.read_csv(
+            f"{get_working_dir()}/model-outputs/model_versions.csv"
+        ).sort_values(by='version_id')['version_id'].max() + 1
 
     def timestamp():
         return datetime.now().date()
@@ -36,13 +23,32 @@ class ModelVersions:
             f"{get_working_dir()}/processed-data/model_input.csv"
         )).date()
 
+    def description(self):
+        return f"{self.location}-{self.model_type}-{self.description}"
+
+    def formula(self):
+        raise NotImplementedError
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument('type', help='model type', type=str.lower)
-    parser.add_argument('location')
-    parser.add_argument('description')
-    parser.add_argument('min_n')
-    parser.add_argument('min_prop')
+    parser.add_argument(
+        'model_type', help='model type', type=str.lower(),
+        choices=['cohen', 'poisson', 'nb'])
+    parser.add_argument(
+        'location', help='location level', choices=['global', 'eu'],
+        type=str.lower())
+    parser.add_argument(
+        'description',
+        help='short description of covariates, to be appended on'
+    )
+    parser.add_argument(
+        'covariates', help='txt file with new line separated list',
+        type=lambda x: open(x, 'r'))
+    parser.add_argument(
+        'min_n', help='minimum number of people', type=int, default=1)
+    parser.add_argument(
+        'min_prop', help='min proportion of linkedin users in destination',
+        type=int, default=0)
     args = parser.parse_args()
-    main(args.iso3, args.destination)
+    my_model = ModelOptions(**vars(args))
