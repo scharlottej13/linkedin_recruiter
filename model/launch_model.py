@@ -4,7 +4,8 @@ from datetime import datetime
 import argparse
 from utils.io import get_working_dir
 from csv import DictWriter
-from rpy2.robjects.packages import STAP
+import subprocess
+# from rpy2.robjects.packages import STAP
 
 
 class Covariates:
@@ -119,10 +120,23 @@ class ModelOptions(Covariates):
             f_object.close()
 
     def launch_r_model(self):
-        with open('not_that_kind_of_model.R', 'r') as f:
-            r_script = f.read()
-        wrapper = STAP(r_script, "myfunc")
-        myfunc.funcname(args)
+
+        # with open('/Users/scharlottej13/repos/linkedin_recruiter/model/not_that_kind_of_model.R', 'r') as f:
+        #     r_script = f.read()
+        # run_model = STAP(r_script, "main")
+        # run_model.main()
+        # giving up on rpy2 too many package issues
+        # instead try this:
+        # listofitems = [1, 2, 3, 4, 0.5, 0.6]
+        # listofitems2 = [a, b, c, d, e, f]
+        # listofitems3 = [a1, s1, d3, 4f, f4]
+        # for arg1 in listofitems:
+        #     for arg2 in listofitems2:
+        #         for arg3 in listofitems3:
+        #             subprocess.call("Rscript script.R --args arg1 arg2", shell=True)
+        # or this:
+        # subprocess.call("Rscript script.R --args arg1 arg2", shell=True)
+        # subprocess.call(["Rscript", "script.R", "--args", "arg1", "arg2"])
 
 
 if __name__ == "__main__":

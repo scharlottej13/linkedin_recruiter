@@ -105,7 +105,9 @@ save_model <- function(
       broom::tidy(fit) %>% add_column(confint(fit), .after = "estimate"),
       file.path(out_dir, paste0(filename, "_betas.csv"))
     )
-    write.csv(broom::glance(fit), file.path(out_dir, paste0(filename, "_summary.csv")))
+    write.csv(
+      broom::glance(fit), file.path(out_dir, paste0(filename, "_summary.csv"))
+    )
     write.csv(broom::augment(fit),
       file.path(out_dir, paste0(filename, ".csv"))
     )
@@ -113,22 +115,17 @@ save_model <- function(
         paste0(filename, "_betas.csv"),
         paste0(filename, "_summary.csv"),
         paste0(filename, ".csv"))
-    ) {save_to_archive(file, out_dir)}
+    ) {
+      save_to_archive(file, out_dir)
+    }
   }
 
 main <- function(filename, dep_var, log_vars, factors, other_numeric,
-                 type, min_n, min_dest_prop, global)
-
-
-args <- commandArgs(trailingOnly = T)
-filename <- as.character(args[1])
-dep_var <- as.character(args[2])
-
-
-
-base_dir <- get_parent_dir()
-df <- read.csv(file.path(base_dir, "processed-data", "variance.csv"))
-save_model(
-  df, filename, base_dir, dep_var, log_vars, factors,
-  other_numeric, type, min_n, min_dest_prop, global
-)
+                 type, min_n, min_dest_prop, global) {
+  base_dir <- get_parent_dir()
+  df <- read.csv(file.path(base_dir, "processed-data", "variance.csv"))
+  save_model(
+    df, filename, base_dir, dep_var, log_vars, factors,
+    other_numeric, type, min_n, min_dest_prop, global
+  )
+}
