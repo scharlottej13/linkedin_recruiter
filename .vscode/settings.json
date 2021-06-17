@@ -3,9 +3,9 @@
     "python.linting.flake8Enabled": true,
     "python.linting.enabled": true,
     // @sync os=linux
-    // "python.pythonPath": "/Users/scharlottej13/anaconda3/envs/linkedin_recruiter/bin/python",
+    "python.pythonPath": "/Users/scharlottej13/anaconda3/envs/linkedin_recruiter/bin/python",
     // @sync os=windows
-    "python.pythonPath": "C:\\ProgramData\\Anaconda3\\envs\\linkedin_recruiter\\python.exe",
+    // "python.pythonPath": "C:\\ProgramData\\Anaconda3\\envs\\linkedin_recruiter\\python.exe",
     "python.formatting.autopep8Args": [
         "--max-line-length",
         "80",
@@ -20,7 +20,7 @@
         "editor.insertSpaces": true
     },
     "r.bracketedPaste": true,
-    "r.rterm.mac": "/Users/scharlottej13/anaconda3/envs/linkedin_recruiter/bin/radian",
+    "r.rterm.mac": "/usr/local/bin/R",
     "r.rpath.mac": "/usr/local/bin/R",
     "r.lsp.debug": true,
     "r.lsp.diagnostics": true,
