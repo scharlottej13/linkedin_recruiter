@@ -1,7 +1,5 @@
 library(MASS)
 library(tidyverse)
-library(broom)
-
 
 get_parent_dir <- function() {
   os <- Sys.info()[["sysname"]]
@@ -92,7 +90,7 @@ run_model <- function(df, dep_var, type, keep_vars) {
 }
 
 save_model <- function(
-  df, suffix, base_dir, dep_var = "flow_median",
+  df, filename, base_dir, dep_var = "flow_median",
   log_vars = NULL, factors = NULL,
   other_numeric = NULL, type = "cohen", min_n=0,
   min_dest_prop = 0.05, global = FALSE
@@ -101,11 +99,6 @@ save_model <- function(
     model_df <- prep_data(df, dep_var, factors, log_vars, keep_vars,
       type, min_n, min_dest_prop, global)
     fit <- run_model(model_df, dep_var, type, keep_vars)
-    if (global) {
-      filename <- paste0(type, "_global_", suffix)
-    } else {
-      filename <- paste0(type, "_eu_", suffix)
-    }
     # save model summary output as a text file
     out_dir <- file.path(base_dir, "model-outputs")
     write.csv(
@@ -123,14 +116,19 @@ save_model <- function(
     ) {save_to_archive(file, out_dir)}
   }
 
-data_dir <- get_parent_dir()
-df <- read.csv(file.path(data_dir, "processed-data", "variance.csv"))
+main <- function(filename, dep_var, log_vars, factors, other_numeric,
+                 type, min_n, min_dest_prop, global)
 
+
+args <- commandArgs(trailingOnly = T)
+filename <- as.character(args[1])
+dep_var <- as.character(args[2])
+
+
+
+base_dir <- get_parent_dir()
+df <- read.csv(file.path(base_dir, "processed-data", "variance.csv"))
 save_model(
-  df, "dist_biggest_cities_plus_gdp", data_dir,
-  global = FALSE,
-  log_vars = c(
-    "dist_biggest_cities", "users_orig_median",
-    "users_dest_median", "area_dest", "area_orig", "gdp_dest", "gdp_orig"
-  ), other_numeric = c("csl", "contig")
+  df, filename, base_dir, dep_var, log_vars, factors,
+  other_numeric, type, min_n, min_dest_prop, global
 )
