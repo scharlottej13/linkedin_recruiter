@@ -30,9 +30,11 @@ return_df <- function(df) {
 
 prep_data <- function(
   df, dep_var, factor_vars, log_vars, keep_vars, type, min_n,
-  min_dest_prop, global
+  min_dest_prop, location
   ) {
-  if (!global) {
+  # TODO! expand to other locations
+  # currently only written for global or EU
+  if (location != "global") {
     df <- df %>%
       filter(eu_plus == 1)
   } else {
@@ -90,14 +92,14 @@ run_model <- function(df, dep_var, type, keep_vars) {
 }
 
 save_model <- function(
-  df, filename, base_dir, dep_var = "flow_median",
+  df, filename, base_dir, location, dep_var = "flow_median",
   log_vars = NULL, factors = NULL,
   other_numeric = NULL, type = "cohen", min_n=0,
-  min_dest_prop = 0.05, global = FALSE
+  min_dest_prop = 0.05
 ) {
     keep_vars <- unique(c(dep_var, log_vars, factors, other_numeric))
     model_df <- prep_data(df, dep_var, factors, log_vars, keep_vars,
-      type, min_n, min_dest_prop, global)
+      type, min_n, min_dest_prop, location)
     fit <- run_model(model_df, dep_var, type, keep_vars)
     # save model summary output as a text file
     out_dir <- file.path(base_dir, "model-outputs")
@@ -120,12 +122,22 @@ save_model <- function(
     }
   }
 
-main <- function(filename, dep_var, log_vars, factors, other_numeric,
-                 type, min_n, min_dest_prop, global) {
+main <- function() {
+  args <- commandArgs(trailingOnly = T)
+  mvid <- args[1]
   base_dir <- get_parent_dir()
+  args <- read.csv(
+    file.path(base_dir, "model-outputs", "model_versions.csv")
+    ) %>% filter(model_version_id == mvid)
+  stopifnot(length(args) == 1)
+  filename <- paste0(args$description + mvid)
+  # dep_var <-
+  # log_vars <-
+  # factors <-
+  # other_numeric <-
   df <- read.csv(file.path(base_dir, "processed-data", "variance.csv"))
   save_model(
-    df, filename, base_dir, dep_var, log_vars, factors,
-    other_numeric, type, min_n, min_dest_prop, global
+    df, filename, base_dir, args$location, dep_var, log_vars,
+    factors, other_numeric, args$type, args$min_n, args$min_dest_prop
   )
 }

@@ -5,7 +5,6 @@ import argparse
 from utils.io import get_working_dir
 from csv import DictWriter
 import subprocess
-# from rpy2.robjects.packages import STAP
 
 
 class Covariates:
@@ -50,6 +49,7 @@ class Covariates:
 
 class ModelOptions(Covariates):
     model_versions = f"{get_working_dir()}/model-outputs/model_versions.csv"
+    r_script = f"{get_working_dir()}/model-outputs/not_that_kind_of_model.R"
 
     def __init__(self, model_type, location, description,
                  covariates, min_n, min_prop):
@@ -112,7 +112,10 @@ class ModelOptions(Covariates):
             'type': self.type,
             'location': self.location,
             'description': self.description(),
-            'data_version': self.data_version()
+            'data_version': self.data_version(),
+            'factors': self.factor_vars(),
+            'min_n': self.min_n,
+            'min_prop': self.min_prop
         }
         with open(self.model_versions, 'a') as f_object:
             dictwriter_object = DictWriter(f_object, fieldnames=new_row.keys())
@@ -120,23 +123,10 @@ class ModelOptions(Covariates):
             f_object.close()
 
     def launch_r_model(self):
-
-        # with open('/Users/scharlottej13/repos/linkedin_recruiter/model/not_that_kind_of_model.R', 'r') as f:
-        #     r_script = f.read()
-        # run_model = STAP(r_script, "main")
-        # run_model.main()
-        # giving up on rpy2 too many package issues
-        # instead try this:
-        # listofitems = [1, 2, 3, 4, 0.5, 0.6]
-        # listofitems2 = [a, b, c, d, e, f]
-        # listofitems3 = [a1, s1, d3, 4f, f4]
-        # for arg1 in listofitems:
-        #     for arg2 in listofitems2:
-        #         for arg3 in listofitems3:
-        #             subprocess.call("Rscript script.R --args arg1 arg2", shell=True)
-        # or this:
-        # subprocess.call("Rscript script.R --args arg1 arg2", shell=True)
-        # subprocess.call(["Rscript", "script.R", "--args", "arg1", "arg2"])
+        subprocess.call(
+            ["Rscript", f"{self.r_script}",
+             "--args", f"{self.model_version_id}"]
+        )
 
 
 if __name__ == "__main__":
@@ -160,3 +150,4 @@ if __name__ == "__main__":
         type=int, default=0)
     args = parser.parse_args()
     my_model = ModelOptions(**vars(args))
+    # my_model.launch_r_model()
