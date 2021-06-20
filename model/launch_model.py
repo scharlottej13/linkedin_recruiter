@@ -66,16 +66,16 @@ class ModelOptions(Covariates):
         return pd.read_csv(self.model_versions).sort_values(
             by='version_id')['version_id'].max() + 1
 
-    def timestamp():
+    def timestamp(self):
         return datetime.now().date()
 
-    def data_version():
+    def data_version(self):
         return datetime.fromtimestamp(os.path.getctime(
             f"{get_working_dir()}/processed-data/model_input.csv"
         )).date()
 
     def description(self):
-        return f"{self.location}-{self.model_type}-{self.description}"
+        return f"{self.location}-{self.type}-{self.description}"
 
     def log_vars(self):
         return list(
@@ -101,8 +101,10 @@ class ModelOptions(Covariates):
         )
 
     def formula(self):
-        y = [f'log({x})' if x in self.log_vars else x for x in self.covariates]
-        return f"log({super().dep_var}) ~ {y.join('+')}"
+        equation = [
+            f'log({x})' if x in self.log_vars() else x for x in self.covariates
+        ]
+        return f"log({self.dep_var}) ~ {[var.join('+') for var in equation]}"
 
     def update_model_versions(self):
         new_row = {
@@ -132,11 +134,11 @@ class ModelOptions(Covariates):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        'model_type', help='model type', type=str.lower(), nargs=1,
+        'model_type', help='model type', type=lambda x: str.lower(x), nargs=1,
         choices=['cohen', 'poisson', 'nb'])
     parser.add_argument(
         'location', help='location level', nargs=1, choices=['global', 'eu'],
-        type=str.lower())
+        type=lambda x: str.lower(x))
     parser.add_argument(
         'description',
         help='short description of covariates, to be appended on'
@@ -150,4 +152,5 @@ if __name__ == "__main__":
         type=int, default=0)
     args = parser.parse_args()
     my_model = ModelOptions(**vars(args))
+    my_model.update_model_versions()
     # my_model.launch_r_model()
