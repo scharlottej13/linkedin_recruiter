@@ -128,10 +128,10 @@ main <- function() {
   base_dir <- get_parent_dir()
   args <- read.csv(
     file.path(base_dir, "model-outputs", "model_versions.csv")
-    ) %>% filter(model_version_id == mvid)
+    ) %>% filter(version_id == mvid)
   stopifnot(length(args) == 1)
-  filename <- paste0(args$description + mvid)
-  # dep_var <-
+  filename <- paste0(args$description, "-", mvid)
+  # dep_var <- str_split(args$formula, "~")[[1]][1]
   # log_vars <-
   # factors <-
   # other_numeric <-
@@ -141,3 +141,10 @@ main <- function() {
     factors, other_numeric, args$type, args$min_n, args$min_dest_prop
   )
 }
+
+# return to this later
+# my idea is, put everything in the formula
+# e.g. log10(y) ~ factor(x1)
+# and then let the function transform it instead
+# rather than all the stuff in the prep_data function
+# and let python handle the rules
