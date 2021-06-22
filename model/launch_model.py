@@ -101,11 +101,10 @@ class ModelOptions(Covariates):
         )
 
     def formula(self):
-        equation = [
+        x = [
             f'log({x})' if x in self.log_vars() else x for x in self.covariates
         ]
-        print(equation)
-        return f"log({self.dep_var}) ~ {[var.join('+') for var in equation]}"
+        return f"log({self.dep_var})~{'+'.join(x)}"
 
     def update_model_versions(self):
         new_row = {
