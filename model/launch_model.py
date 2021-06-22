@@ -3,7 +3,7 @@ import os
 from datetime import datetime
 import argparse
 from utils.io import get_working_dir
-from csv import DictWriter
+import csv
 import subprocess
 
 
@@ -54,8 +54,8 @@ class ModelOptions(Covariates):
     def __init__(self, model_type, location, description,
                  covariates, min_n, min_prop):
         super().__init__()
-        self.type = model_type
-        self.location = location
+        self.type = model_type[0]
+        self.location = location[0]
         self.short_description = description
         self.covariates = covariates
         self.min_n = min_n
@@ -75,7 +75,7 @@ class ModelOptions(Covariates):
         )).date()
 
     def description(self):
-        return f"{self.location}-{self.type}-{self.description}"
+        return f"{self.location}-{self.type}-{self.short_description}"
 
     def log_vars(self):
         return list(
@@ -104,6 +104,7 @@ class ModelOptions(Covariates):
         equation = [
             f'log({x})' if x in self.log_vars() else x for x in self.covariates
         ]
+        print(equation)
         return f"log({self.dep_var}) ~ {[var.join('+') for var in equation]}"
 
     def update_model_versions(self):
@@ -119,10 +120,15 @@ class ModelOptions(Covariates):
             'min_n': self.min_n,
             'min_prop': self.min_prop
         }
-        with open(self.model_versions, 'a') as f_object:
-            dictwriter_object = DictWriter(f_object, fieldnames=new_row.keys())
-            dictwriter_object.writerow(new_row)
-            f_object.close()
+        # read header automatically
+        with open(self.model_versions, "r") as f:
+            reader = csv.reader(f)
+            for header in reader:
+                break
+        # add row to CSV file
+        with open(self.model_versions, "a") as f:
+            writer = csv.DictWriter(f, fieldnames=header)
+            writer.writerow(new_row)
 
     def launch_r_model(self):
         subprocess.call(
