@@ -3,8 +3,10 @@ library(dplyr)
 source(here("viz", "chord_helpers.R"))
 
 args <- commandArgs(trailingOnly = T)
-level_arg <- as.character(args[1])
-group_arg <- as.character(args[2])
+# level_arg <- tolower(as.character(args[1]))
+# group_arg <- tolower(as.character(args[2]))
+level_arg <- "midregion"
+group_arg <- "global"
 orig_col <- paste0(level_arg, "_orig")
 dest_col <- paste0(level_arg, "_dest")
 
@@ -18,22 +20,16 @@ get_data <- function(level_arg, group_arg, recip, pct) {
     filename <- paste0(filename, "_recip")
   }
   df <- read.csv(file.path(data_dir, paste0(filename, ".csv")))
-  if (group_arg != "Global") {
+  if (group_arg != "global") {
     df <- df %>%
       filter(
         grepl(group_arg, get(dest_col)),
         grepl(group_arg, get(orig_col))
       )
   }
-  if (!pct) {
-    df <- df %>%
-      select(c(orig_col, dest_col, "flow_median")) %>%
-      mutate(flow_median = flow_median / 100000)
-  } else {
-      df <- df %>%
-        mutate(total = sum(flow_median), pct = (flow_median / total) * 100) %>%
-        select(c(orig_col, dest_col, "pct"))
-  }
+  df <- df %>%
+    select(c(orig_col, dest_col, "flow_median")) %>%
+    mutate(flow_median = flow_median / 100000)
 }
 
 # for colors & order of sections
@@ -43,13 +39,19 @@ df1 <- read.csv(
       arrange(order1)
 color_vector <- setNames(df1$col1, df1$loc_name)
 
+df <- get_data(level_arg, group_arg, FALSE, FALSE)
+plot_n_save_wrapper(
+  df, df1, color_vector, base_dir, level_arg, group_arg,
+  recip = FALSE, percent = TRUE
+)
+
 # plot 4 chord diagrams
-for (recip in c(FALSE, TRUE)) {
-  for (pct in c(FALSE, TRUE)) {
-    df <- get_data(level_arg, group_arg, recip, pct)
-    plot_n_save_wrapper(
-      df, df1, color_vector, base_dir, level_arg, group_arg,
-      recip = recip, percent = pct
-    )
-  }
-}
+# for (recip in c(FALSE, TRUE)) {
+#   for (pct in c(FALSE, TRUE)) {
+#     df <- get_data(level_arg, group_arg, recip, pct)
+#     plot_n_save_wrapper(
+#       df, df1, color_vector, base_dir, level_arg, group_arg,
+#       recip = recip, percent = pct
+#     )
+#   }
+# }

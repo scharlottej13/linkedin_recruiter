@@ -1,11 +1,9 @@
 # Set of functions to easily use circilize package
-# (heavily influenced by migest package)
-# to create chord diagrams
+# (heavily influenced by migest package) to create chord diagrams
 # other resources:
 # https://github.com/guyabel/migest/blob/master/demo/cfplot_reg2.R
 # https://www.streetlightdata.com/chord-diagrams-visualizing-data/?type=blog/
 # https://jokergoo.github.io/circlize_book/book/advanced-usage-of-chorddiagram.html
-
 library(circlize)
 library(dplyr)
 
@@ -53,41 +51,25 @@ plot_n_save_wrapper <- function(
   pdf(outpath, width = 10, height = 12)
   circos.par(start.degree = 90, gap.degree = 4, track.margin = c(-0.1, 0.1),
              points.overflow.warning = FALSE)
-  if (!is.null(grouper)) {
-    chordDiagram(
-      x = df, grid.col = color_vector, transparency = 0.25,
-      big.gap = 4, group = grouper,
-      directional = 1, direction.type = c("arrows", "diffHeight"),
-      diffHeight = -0.04, annotationTrack = "grid",
-      link.arr.type = "big.arrow", link.sort = TRUE, link.largest.ontop = TRUE
-    )
-  } else {
-    chordDiagram(
-      x = df, grid.col = color_vector, transparency = 0.25,
-      # order = df1$loc_name,
-      directional = 1, direction.type = c("arrows", "diffHeight"),
-      diffHeight = -0.04, annotationTrack = "grid",
-      link.arr.type = "big.arrow", link.sort = TRUE, link.largest.ontop = TRUE
-    )
-  }
   chordDiagram(
     x = df, grid.col = color_vector, transparency = 0.25,
-    # order = df1$loc_name,
     directional = 1, direction.type = c("arrows", "diffHeight"),
-    diffHeight  = -0.04, annotationTrack = "grid",
-    link.arr.type = "big.arrow", link.sort = TRUE, link.largest.ontop = TRUE
+    diffHeight = -0.04, annotationTrack = "grid",
+    link.arr.type = "big.arrow", link.sort = TRUE, link.largest.ontop = TRUE,
+    group = grouper, # still working out the bugs in 'grouper' part
+    scale = percent # scales so all sectors are the same size
   )
   circos.trackPlotRegion(
     track.index = 1, bg.border = NA, panel.fun = function(x, y) {
       # function loops through each 'sector.index'
       xlim <- get.cell.meta.data("xlim")
       sector_index <- get.cell.meta.data("sector.index")
+      ylim = get.cell.meta.data("ylim")
       # need this since labels differ from sector.index values
       # loc1 and loc2 are split to two lines if too long
-      # add text for loc1
       loc1 <- df1$loc1[df1$loc_name == sector_index]
       loc2 <- df1$loc2[df1$loc_name == sector_index]
-      # scales text size, 1 is default
+      # scale up text size a bit
       cex <- 1.6
       circos.text(
         x = mean(xlim), y = ifelse(test = nchar(loc2) == 0, yes = 5.2, no = 6),
@@ -97,22 +79,22 @@ plot_n_save_wrapper <- function(
       circos.text(x = mean(xlim), y = 4, niceFacing = TRUE,
                   labels = loc2, facing = "bending", cex = cex)
       # Add ticks
-      if (percent) {
-        circos.axis(
-        h = "top",
-        major.at = seq(from = 0, to = xlim[2], by = 5),
-        minor.ticks = 1,
-        labels.niceFacing = TRUE
-      )
-      } else {
+      if (!percent) {
         circos.axis(
           h = "top",
           major.at = seq(from = 0, to = xlim[2],
             by = ifelse(test = xlim[2] > 10, yes = 2, no = 1)
-          ),
-          minor.ticks = 1,
-          labels.niceFacing = TRUE
+          ), minor.ticks = 1
         )
+      } else {
+        sequence <- seq(0, 1, 0.20)
+        circos.axis(labels = FALSE, major.at = sequence, minor.ticks = 1)
+        for (p in sequence) {
+          if (p != 0) {
+            circos.text(p, mean(ylim) + 1, paste0(p * 100, "%"),
+            cex = 0.8, adj = c(0.5, 0), niceFacing = TRUE)
+          }
+        }
       }
     }
   )
