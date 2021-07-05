@@ -59,18 +59,19 @@ plot_n_save_wrapper <- function(
     group = grouper, # still working out the bugs in 'grouper' part
     scale = percent # scales so all sectors are the same size
   )
-  circos.trackPlotRegion(
+  circos.track(
     track.index = 1, bg.border = NA, panel.fun = function(x, y) {
       # function loops through each 'sector.index'
       xlim <- get.cell.meta.data("xlim")
       sector_index <- get.cell.meta.data("sector.index")
-      ylim = get.cell.meta.data("ylim")
+      ylim <- get.cell.meta.data("ylim")
       # need this since labels differ from sector.index values
       # loc1 and loc2 are split to two lines if too long
       loc1 <- df1$loc1[df1$loc_name == sector_index]
       loc2 <- df1$loc2[df1$loc_name == sector_index]
       # scale up text size a bit
       cex <- 1.6
+      style <- "bending"
       circos.text(
         x = mean(xlim), y = ifelse(test = nchar(loc2) == 0, yes = 5.2, no = 6),
         labels = loc1, facing = "bending", cex = cex, niceFacing = TRUE
@@ -80,19 +81,30 @@ plot_n_save_wrapper <- function(
                   labels = loc2, facing = "bending", cex = cex)
       # Add ticks
       if (!percent) {
-        circos.axis(
-          h = "top",
-          major.at = seq(from = 0, to = xlim[2],
-            by = ifelse(test = xlim[2] > 10, yes = 2, no = 1)
-          ), minor.ticks = 1
-        )
+        # labels <- seq(from = 0, to = xlim[2],
+        #     by = ifelse(xlim[2] > 10, 2, 1))
+        num_going <- df %>%
+          filter(midregion_orig == sector_index) %>%
+          summarise(across(flow_median, sum)) %>%
+          pull(flow_median)
+        labels <- c(0, num_going, xlim[2])
+        circos.axis(labels = FALSE, major.at = labels, minor.ticks = 0)
+        for (x in labels) {
+          circos.text(
+            x, 2, round(x, ifelse(x < 1, 1, 0)),
+            cex = 0.8, niceFacing = TRUE,
+            adj = ifelse(sector_index == "Oceania", c(0, 0), c(0.5, 0))
+          )
+        }
       } else {
         sequence <- seq(0, 1, 0.20)
+        # first set the ticks
         circos.axis(labels = FALSE, major.at = sequence, minor.ticks = 1)
+        # then create the text
         for (p in sequence) {
           if (p != 0) {
             circos.text(p, mean(ylim) + 1, paste0(p * 100, "%"),
-            cex = 0.8, adj = c(0.5, 0), niceFacing = TRUE)
+            cex = 0.8, adj = c(0.5, 0))
           }
         }
       }

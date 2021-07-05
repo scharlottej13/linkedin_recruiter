@@ -42,7 +42,7 @@ color_vector <- setNames(df1$col1, df1$loc_name)
 df <- get_data(level_arg, group_arg, FALSE, FALSE)
 plot_n_save_wrapper(
   df, df1, color_vector, base_dir, level_arg, group_arg,
-  recip = FALSE, percent = TRUE
+  recip = FALSE, percent = FALSE
 )
 
 # plot 4 chord diagrams
