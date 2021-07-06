@@ -27,9 +27,7 @@ get_data <- function(level_arg, group_arg, recip, pct) {
         grepl(group_arg, get(orig_col))
       )
   }
-  df <- df %>%
-    select(c(orig_col, dest_col, "flow_median")) %>%
-    mutate(flow_median = flow_median / 100000)
+  df %>% select(c(orig_col, dest_col, "flow_median"))
 }
 
 # for colors & order of sections
@@ -42,7 +40,7 @@ color_vector <- setNames(df1$col1, df1$loc_name)
 df <- get_data(level_arg, group_arg, FALSE, FALSE)
 plot_n_save_wrapper(
   df, df1, color_vector, base_dir, level_arg, group_arg,
-  recip = FALSE, percent = FALSE
+  recip = FALSE, percent = TRUE
 )
 
 # plot 4 chord diagrams

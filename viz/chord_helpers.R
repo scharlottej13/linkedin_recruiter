@@ -65,48 +65,63 @@ plot_n_save_wrapper <- function(
       xlim <- get.cell.meta.data("xlim")
       sector_index <- get.cell.meta.data("sector.index")
       ylim <- get.cell.meta.data("ylim")
-      # need this since labels differ from sector.index values
-      # loc1 and loc2 are split to two lines if too long
-      loc1 <- df1$loc1[df1$loc_name == sector_index]
-      loc2 <- df1$loc2[df1$loc_name == sector_index]
       # scale up text size a bit
       cex <- 1.6
       style <- "bending"
-      circos.text(
-        x = mean(xlim), y = ifelse(test = nchar(loc2) == 0, yes = 5.2, no = 6),
-        labels = loc1, facing = "bending", cex = cex, niceFacing = TRUE
-      )
-      # and then for loc2
-      circos.text(x = mean(xlim), y = 4, niceFacing = TRUE,
-                  labels = loc2, facing = "bending", cex = cex)
       # Add ticks
       if (!percent) {
-        # labels <- seq(from = 0, to = xlim[2],
-        #     by = ifelse(xlim[2] > 10, 2, 1))
         num_going <- df %>%
           filter(midregion_orig == sector_index) %>%
           summarise(across(flow_median, sum)) %>%
           pull(flow_median)
+        # loc1 and loc2 are split to two lines if too long
+        loc1 <- df1$loc1[df1$loc_name == sector_index]
+        loc2 <- df1$loc2[df1$loc_name == sector_index]
+        circos.text(
+          x = mean(xlim), y = ifelse(nchar(loc2) == 0, 5.2, 6),
+          labels = loc1, facing = style, cex = cex, niceFacing = TRUE
+        )
+        # and then for loc2
+        circos.text(
+          x = mean(xlim), y = 4, niceFacing = TRUE,
+          labels = loc2, facing = style, cex = cex
+        )
         labels <- c(0, num_going, xlim[2])
         circos.axis(labels = FALSE, major.at = labels, minor.ticks = 0)
         for (x in labels) {
           circos.text(
-            x, 2, round(x, ifelse(x < 1, 1, 0)),
+            x, 2, round(x / 100000, ifelse(x / 100000 < 1, 1, 0)),
             cex = 0.8, niceFacing = TRUE,
             adj = ifelse(sector_index == "Oceania", c(0, 0), c(0.5, 0))
           )
         }
       } else {
+        # no need to split
+        circos.text(
+          x = mean(xlim), y = 6, labels = sector_index,
+          facing = style, cex = cex, niceFacing = TRUE
+        )
+        # grab values for flow range
+        total <- df %>%
+          filter(midregion_orig == sector_index |
+            midregion_dest == sector_index) %>%
+          summarise(across(flow_median, sum)) %>%
+          pull(flow_median)
+        circos.text(
+          mean(xlim), 3,
+          paste0("N = ", prettyNum(round(total, -3), big.mark = ",")),
+          cex = 0.8, adj = c(0.5, 0), niceFacing = TRUE
+        )
         sequence <- seq(0, 1, 0.20)
         # first set the ticks
-        circos.axis(labels = FALSE, major.at = sequence, minor.ticks = 1)
+        circos.axis(labels = TRUE, major.at = sequence, minor.ticks = 1)
         # then create the text
-        for (p in sequence) {
-          if (p != 0) {
-            circos.text(p, mean(ylim) + 1, paste0(p * 100, "%"),
-            cex = 0.8, adj = c(0.5, 0))
-          }
-        }
+        # for (p in sequence) {
+        #   if (p != 0) {
+        #     circos.text(p, mean(ylim) + 1, p,
+        #     cex = 0.8, adj = c(0.5, 0), niceFacing = TRUE)
+        #   }
+        # }
       }
     }
   )
