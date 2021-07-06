@@ -68,12 +68,12 @@ plot_n_save_wrapper <- function(
       # scale up text size a bit
       cex <- 1.6
       style <- "bending"
+      num_going <- df %>%
+        filter(midregion_orig == sector_index) %>%
+        summarise(across(flow_median, sum)) %>%
+        pull(flow_median)
       # Add ticks
       if (!percent) {
-        num_going <- df %>%
-          filter(midregion_orig == sector_index) %>%
-          summarise(across(flow_median, sum)) %>%
-          pull(flow_median)
         # loc1 and loc2 are split to two lines if too long
         loc1 <- df1$loc1[df1$loc_name == sector_index]
         loc2 <- df1$loc2[df1$loc_name == sector_index]
@@ -96,22 +96,27 @@ plot_n_save_wrapper <- function(
           )
         }
       } else {
-        # no need to split
-        circos.text(
-          x = mean(xlim), y = 6, labels = sector_index,
-          facing = style, cex = cex, niceFacing = TRUE
-        )
         # grab values for flow range
         total <- df %>%
           filter(midregion_orig == sector_index |
             midregion_dest == sector_index) %>%
           summarise(across(flow_median, sum)) %>%
           pull(flow_median)
+        # no need to split
         circos.text(
-          mean(xlim), 3,
-          paste0("N = ", prettyNum(round(total, -3), big.mark = ",")),
-          cex = 0.8, adj = c(0.5, 0), niceFacing = TRUE
+          x = mean(xlim), y = 6, labels = sector_index,
+          facing = style, cex = cex, niceFacing = TRUE
         )
+        # add dotted line
+        circos.lines(xlim, c(3, 3), lty = 3)
+        print(sector_index)
+        print(num_going / total)
+        circos.text(num_going / total, 3.2, round(num_going / 100000, 0))
+        # circos.text(
+        #   mean(xlim), 3,
+        #   paste0("N = ", prettyNum(round(total, -3), big.mark = ",")),
+        #   cex = 0.8, adj = c(0.5, 0), niceFacing = TRUE
+        # )
         sequence <- seq(0, 1, 0.20)
         # first set the ticks
         circos.axis(labels = TRUE, major.at = sequence, minor.ticks = 1)
