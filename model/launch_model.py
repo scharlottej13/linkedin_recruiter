@@ -49,10 +49,10 @@ class Covariates:
 
 class ModelOptions(Covariates):
     model_versions = f"{get_working_dir()}/model-outputs/model_versions.csv"
-    r_script = f"{get_working_dir()}/model-outputs/not_that_kind_of_model.R"
+    r_script = "/Users/scharlottej13/repos/linkedin_recruiter/model/not_that_kind_of_model.R"
 
     def __init__(self, model_type, location, description,
-                 covariates, min_n, min_prop):
+                 covariates, min_n, min_prop, recip_only):
         super().__init__()
         self.type = model_type[0]
         self.location = location[0]
@@ -60,6 +60,7 @@ class ModelOptions(Covariates):
         self.covariates = covariates
         self.min_n = min_n
         self.min_prop = min_prop
+        self.recip_only = recip_only * 1
 
     def model_version_id(self):
         # add 1 to the last model version id
@@ -77,22 +78,14 @@ class ModelOptions(Covariates):
     def description(self):
         return f"{self.location}-{self.type}-{self.short_description}"
 
-    def log_vars(self):
+    def get_log_vars(self):
         return list(
             set(self.covariates).intersection(
                 set(super().log_tformed_covariates())
             )
         )
 
-    def other_numeric_vars(self):
-        # numeric covariates that should not be log transformed
-        return list(
-            set(self.covariates).intersection(
-                set(super().numeric_covariates())
-                ) - set(self.log_vars())
-            )
-
-    def factor_vars(self):
+    def get_factor_vars(self):
         # variables that R needs to change to factors aka dummy variables
         return list(
             set(self.covariates).intersection(
@@ -100,11 +93,30 @@ class ModelOptions(Covariates):
             )
         )
 
+    def get_tform_func(self, x):
+        if x in self.get_log_vars():
+            if self.type == 'cohen':
+                func = 'log10'
+            else:
+                func = 'log'
+        elif x in self.get_factor_vars():
+            func = 'factor'
+        else:
+            func = None
+        if func:
+            return f'{func}({x})'
+        else:
+            return x
+
     def formula(self):
-        x = [
-            f'log({x})' if x in self.log_vars() else x for x in self.covariates
+        if self.type == 'cohen':
+            dep_var_str = f'log10({self.dep_var})'
+        else:
+            dep_var_str = self.dep_var
+        cov_list = [
+            self.get_tform_func(x) for x in self.covariates
         ]
-        return f"log({self.dep_var})~{'+'.join(x)}"
+        return f"{dep_var_str}~{'+'.join(cov_list)}"
 
     def update_model_versions(self):
         new_row = {
@@ -115,9 +127,9 @@ class ModelOptions(Covariates):
             'location': self.location,
             'description': self.description(),
             'data_version': self.data_version(),
-            'factors': self.factor_vars(),
             'min_n': self.min_n,
-            'min_prop': self.min_prop
+            'min_prop': self.min_prop,
+            'recip_only': self.recip_only
         }
         # read header automatically
         with open(self.model_versions, "r") as f:
@@ -139,23 +151,27 @@ class ModelOptions(Covariates):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        'model_type', help='model type', type=lambda x: str.lower(x), nargs=1,
-        choices=['cohen', 'poisson', 'nb'])
-    parser.add_argument(
-        'location', help='location level', nargs=1, choices=['global', 'eu'],
-        type=lambda x: str.lower(x))
-    parser.add_argument(
         'description',
         help='short description of covariates, to be appended on'
     )
-    parser.add_argument('covariates', help='list of strings', nargs='+',
-                        choices=Covariates.cov_list)
     parser.add_argument(
-        '--min_n', help='minimum number of people', type=int, default=1)
+        '--model_type', type=lambda x: str.lower(x), nargs=1,
+        choices=['cohen', 'poisson', 'nb'], default=['cohen'])
+    parser.add_argument(
+        '--location', help='location level', nargs=1, choices=['global', 'eu'],
+        type=lambda x: str.lower(x), default=['eu'])
+    parser.add_argument(
+        '--covariates', help='list of strings', nargs='+',
+        choices=Covariates.cov_list,
+        default=['dist_biggest_cities', 'area_orig', 'area_dest',
+                 'users_orig_median', 'users_dest_median'])
+    parser.add_argument(
+        '--min_n', help='minimum count', type=int, default=1)
     parser.add_argument(
         '--min_prop', help='min proportion of linkedin users in destination',
         type=int, default=0)
+    parser.add_argument('--recip_only', action='store_true')
     args = parser.parse_args()
     my_model = ModelOptions(**vars(args))
     my_model.update_model_versions()
-    # my_model.launch_r_model()
+    my_model.launch_r_model()

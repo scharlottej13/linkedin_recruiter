@@ -7,7 +7,7 @@ get_parent_dir <- function() {
   if (os == "Windows") {
     parent_dir <- file.path("N:", user, "linkedin_recruiter")
   } else {
-    parent_dir <- file.path("Users", user, "Nextcloud", "linkedin_recruiter")
+    parent_dir <- file.path("/Users", user, "Nextcloud", "linkedin_recruiter")
   }
   parent_dir
 }
@@ -28,10 +28,7 @@ return_df <- function(df) {
   df
 }
 
-prep_data <- function(
-  df, dep_var, factor_vars, log_vars, keep_vars, type, min_n,
-  min_dest_prop, location
-  ) {
+prep_data <- function(df, keep_vars, min_n, min_dest_prop, location) {
   # TODO! expand to other locations
   # currently only written for global or EU
   if (location != "global") {
@@ -41,44 +38,29 @@ prep_data <- function(
     df <- df %>%
       filter(users_orig_median > min_dest_prop)
   }
-  if (type == "cohen") {
-    log_vars <- c(dep_var, log_vars)
-    my_func <- "log10"
-  } else if ((type == "poisson") | (type == "nb")) {
-    # glm has log-link
-    my_func <- "log"
-  } else {
-    # gravity model already log transforms
-    my_func <- "return_df"
-  }
+  # hacky hack hack
+  dep_var <- keep_vars[[1]]
   df %>%
     filter(dep_var >= min_n) %>%
-    mutate_at(factor_vars, factor) %>%
-    mutate_at(log_vars, getFunction(my_func)) %>%
     dplyr::select(all_of(c(keep_vars, "country_dest", "country_orig"))) %>%
     drop_na()
 }
 
-run_model <- function(df, dep_var, type, keep_vars) {
-  # log_vars: independent variables that will be log transformed
-  # other_factors: independent categorical variables
-  # other_numeric: independent numeric variables that are not log transformed
-  # type: type of model to run, one of cohen, poisson, or gravity
-  # min_n: minimum value for the count of the dependent variable
-  formula <- as.formula(paste(
-    dep_var, paste(keep_vars[keep_vars != dep_var],
-    collapse = " + "), sep = " ~ "))
+run_model <- function(df, type, formula) {
+  # https://www.pnas.org/content/105/40/15269
   if (type == "cohen") {
-    # https://www.pnas.org/content/105/40/15269
     fit <- lm(formula, data = df)
+  # ! not yet tested
   } else if (type == "nb") {
     fit <- vglm(formula, data = df, family = posnegbinomial())
+  # ! not yet tested
   } else if (type == "poisson") {
-    # ? decided no offset b/c one user can want to move to > 1 location
+    # ? no offset b/c one user can want to move to > 1 location
     # fit <- glm(formula, family = poisson(), data = df)
     fit <- vglm(formula, data = df, family = pospoisson())
+  # TO DO test/build this part more (if needed)
+  # ! not yet tested
   } else if (type == "gravity") {
-    # TO DO test/build this part more (if needed)
     fit <- ddm(
       dependent_variable = dep_var, distance = "distance",
       code_origin = "country_orig", code_destination = "country_dest",
@@ -92,15 +74,13 @@ run_model <- function(df, dep_var, type, keep_vars) {
 }
 
 save_model <- function(
-  df, filename, base_dir, location, dep_var = "flow_median",
-  log_vars = NULL, factors = NULL,
-  other_numeric = NULL, type = "cohen", min_n=0,
-  min_dest_prop = 0.05
+  df, filename, base_dir, formula, location,
+  type = "cohen", min_n=1, min_dest_prop=0
 ) {
-    keep_vars <- unique(c(dep_var, log_vars, factors, other_numeric))
-    model_df <- prep_data(df, dep_var, factors, log_vars, keep_vars,
-      type, min_n, min_dest_prop, location)
-    fit <- run_model(model_df, dep_var, type, keep_vars)
+    formula <- as.formula(formula)
+    keep_vars <- all.vars(formula)
+    model_df <- prep_data(df, keep_vars, min_n, min_dest_prop, location)
+    fit <- run_model(model_df, type, formula)
     # save model summary output as a text file
     out_dir <- file.path(base_dir, "model-outputs")
     write.csv(
@@ -123,28 +103,22 @@ save_model <- function(
   }
 
 main <- function() {
-  args <- commandArgs(trailingOnly = T)
-  mvid <- args[1]
+  cl_args <- commandArgs(trailingOnly = T)
+  mvid <- cl_args[1]
+  print(cl_args)
+  print(mvid)
   base_dir <- get_parent_dir()
   args <- read.csv(
     file.path(base_dir, "model-outputs", "model_versions.csv")
     ) %>% filter(version_id == mvid)
-  stopifnot(length(args) == 1)
-  filename <- paste0(args$description, "-", mvid)
-  # dep_var <- str_split(args$formula, "~")[[1]][1]
-  # log_vars <-
-  # factors <-
-  # other_numeric <-
-  df <- read.csv(file.path(base_dir, "processed-data", "variance.csv"))
+  stopifnot(nrow(args) == 1)
+  output_filename <- paste0(args$description, "-", mvid)
+  df <- read.csv(file.path(
+    base_dir, "processed-data",
+    paste0(ifelse(args$recip == 0, "variance", "variance_recip"), ".csv")
+  ))
   save_model(
-    df, filename, base_dir, args$location, dep_var, log_vars,
-    factors, other_numeric, args$type, args$min_n, args$min_dest_prop
+    df, output_filename, base_dir, args$forumla, args$location,
+    args$type, args$min_n, args$min_dest_prop
   )
 }
-
-# return to this later
-# my idea is, put everything in the formula
-# e.g. log10(y) ~ factor(x1)
-# and then let the function transform it instead
-# rather than all the stuff in the prep_data function
-# and let python handle the rules
