@@ -39,7 +39,7 @@ prep_data <- function(df, keep_vars, min_n, min_dest_prop, location) {
       filter(users_orig_median > min_dest_prop)
   }
   # hacky hack hack
-  dep_var <- keep_vars[[1]]
+  dep_var <- keep_vars[1]
   df %>%
     filter(dep_var >= min_n) %>%
     dplyr::select(all_of(c(keep_vars, "country_dest", "country_orig"))) %>%
@@ -85,13 +85,14 @@ save_model <- function(
     out_dir <- file.path(base_dir, "model-outputs")
     write.csv(
       broom::tidy(fit) %>% add_column(confint(fit), .after = "estimate"),
-      file.path(out_dir, paste0(filename, "_betas.csv"))
+      file.path(out_dir, paste0(filename, "_betas.csv")), row.names = FALSE
     )
     write.csv(
-      broom::glance(fit), file.path(out_dir, paste0(filename, "_summary.csv"))
+      broom::glance(fit),
+      file.path(out_dir, paste0(filename, "_summary.csv")), row.names = FALSE
     )
     write.csv(broom::augment(fit),
-      file.path(out_dir, paste0(filename, ".csv"))
+      file.path(out_dir, paste0(filename, ".csv")), row.names = FALSE
     )
     for (file in c(
         paste0(filename, "_betas.csv"),
@@ -102,23 +103,30 @@ save_model <- function(
     }
   }
 
-main <- function() {
-  cl_args <- commandArgs(trailingOnly = T)
-  mvid <- cl_args[1]
-  print(cl_args)
-  print(mvid)
-  base_dir <- get_parent_dir()
-  args <- read.csv(
-    file.path(base_dir, "model-outputs", "model_versions.csv")
-    ) %>% filter(version_id == mvid)
-  stopifnot(nrow(args) == 1)
-  output_filename <- paste0(args$description, "-", mvid)
-  df <- read.csv(file.path(
-    base_dir, "processed-data",
-    paste0(ifelse(args$recip == 0, "variance", "variance_recip"), ".csv")
-  ))
-  save_model(
-    df, output_filename, base_dir, args$forumla, args$location,
-    args$type, args$min_n, args$min_dest_prop
-  )
-}
+
+cl_args <- commandArgs(trailingOnly = T)
+mvid <- cl_args[1]
+print(mvid)
+print(cl_args)
+base_dir <- get_parent_dir()
+args <- read.csv(
+  file.path(base_dir, "model-outputs", "model_versions.csv")
+  ) %>% filter(version_id == mvid)
+stopifnot(nrow(args) == 1)
+output_filename <- paste0(args$description, "-", mvid)
+df <- read.csv(file.path(
+  base_dir, "processed-data",
+  paste0(ifelse(args$recip == 0, "variance", "variance_recip"), ".csv")
+))
+
+# I don't know, it breaks otherwise because reasons?
+formula <- args$formula
+location <- args$location
+type <- args$type
+min_n <- args$min_n
+min_dest_prop <- args$min_dest_prop
+
+save_model(
+  df, output_filename, base_dir, formula, location,
+  type, min_n, min_dest_prop
+)

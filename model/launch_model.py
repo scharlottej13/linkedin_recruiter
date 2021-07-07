@@ -142,9 +142,8 @@ class ModelOptions(Covariates):
             writer.writerow(new_row)
 
     def launch_r_model(self):
-        subprocess.call(
-            ["Rscript", f"{self.r_script}",
-             "--args", f"{self.model_version_id}"]
+        subprocess.run(
+            f"Rscript {self.r_script} {self.model_version_id}"
         )
 
 
