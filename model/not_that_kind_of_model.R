@@ -103,17 +103,14 @@ save_model <- function(
     }
   }
 
-
 cl_args <- commandArgs(trailingOnly = T)
-mvid <- cl_args[1]
-print(mvid)
-print(cl_args)
+mvid <- as.numeric(cl_args[1])
 base_dir <- get_parent_dir()
 args <- read.csv(
   file.path(base_dir, "model-outputs", "model_versions.csv")
-  ) %>% filter(version_id == mvid)
+) %>% filter(version_id == mvid)
 stopifnot(nrow(args) == 1)
-output_filename <- paste0(args$description, "-", mvid)
+
 df <- read.csv(file.path(
   base_dir, "processed-data",
   paste0(ifelse(args$recip == 0, "variance", "variance_recip"), ".csv")
@@ -125,6 +122,7 @@ location <- args$location
 type <- args$type
 min_n <- args$min_n
 min_dest_prop <- args$min_dest_prop
+output_filename <- paste0(args$description, "-", mvid)
 
 save_model(
   df, output_filename, base_dir, formula, location,

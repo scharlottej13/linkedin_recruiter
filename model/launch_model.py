@@ -2,14 +2,15 @@ import pandas as pd
 import os
 from datetime import datetime
 import argparse
-from utils.io import get_working_dir
+from configurator import Config
 import csv
 import subprocess
 
 
 class Covariates:
+    config = Config()
     cov_list = list(pd.read_csv(
-        f"{get_working_dir()}/processed-data/variance.csv"
+        f"{config['directories.data']['processed']}/variance.csv"
     ).columns)
 
     def __init__(self):
@@ -48,8 +49,9 @@ class Covariates:
 
 
 class ModelOptions(Covariates):
-    model_versions = f"{get_working_dir()}/model-outputs/model_versions.csv"
-    r_script = "/Users/scharlottej13/repos/linkedin_recruiter/model/not_that_kind_of_model.R"
+    config = Config()
+    model_versions = f"{config['directories.data']['model']}/model_versions.csv"
+    r_script = f"{config['directories']['code']}/model/not_that_kind_of_model.R"
 
     def __init__(self, model_type, location, description,
                  covariates, min_n, min_prop, recip_only):
@@ -61,18 +63,24 @@ class ModelOptions(Covariates):
         self.min_n = min_n
         self.min_prop = min_prop
         self.recip_only = recip_only * 1
+        self.model_version_id = \
+            pd.read_csv(self.model_versions).sort_values(
+                by='version_id')['version_id'].max()
 
+    @property
     def model_version_id(self):
-        # add 1 to the last model version id
-        return pd.read_csv(self.model_versions).sort_values(
-            by='version_id')['version_id'].max() + 1
+        return self._model_version_id
+
+    @model_version_id.setter
+    def model_version_id(self, value):
+        self._model_version_id = value + 1
 
     def timestamp(self):
         return datetime.now().date()
 
     def data_version(self):
         return datetime.fromtimestamp(os.path.getctime(
-            f"{get_working_dir()}/processed-data/model_input.csv"
+            f"{self.config['directories.data']['processed']}/model_input.csv"
         )).date()
 
     def description(self):
@@ -120,7 +128,7 @@ class ModelOptions(Covariates):
 
     def update_model_versions(self):
         new_row = {
-            'version_id': self.model_version_id(),
+            'version_id': self.model_version_id,
             'timestamp': self.timestamp(),
             'formula': self.formula(),
             'type': self.type,
@@ -143,7 +151,7 @@ class ModelOptions(Covariates):
 
     def launch_r_model(self):
         subprocess.run(
-            f"Rscript {self.r_script} {self.model_version_id}"
+            ["Rscript", f"{self.r_script}", f"{self.model_version_id}"]
         )
 
 
