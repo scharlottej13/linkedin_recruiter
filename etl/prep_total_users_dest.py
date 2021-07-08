@@ -2,13 +2,17 @@ import numpy as np
 import pandas as pd
 import xlsxwriter
 from os import pipe
-from utils.io import get_input_dir, get_output_dir, _get_working_dir, save_output
+from utils.io import save_output
 from etl.prep_bilateral_flows import prep_eu_states
+from configurator import Config
+
+CONFIG = Config()
 
 
 def prep_total_users():
     """File with total LinkedIn users by country."""
-    df = pd.read_csv(f'{get_input_dir()}/model_input.csv')
+    df = pd.read_csv(
+        f"{CONFIG['directories.data']['processed']}/model_input.csv")
     keep_cols = [x for x in df.columns if '_dest' in x] + ['query_date']
     eu = prep_eu_states()
     eu_isos = eu[eu['eu_plus'] == 1].index.values
@@ -23,7 +27,7 @@ def fix_dups(df, id_cols=['query_date', 'country_dest'], value_col='goers'):
     groups = df[df.duplicated(id_cols, keep=False)].groupby(id_cols)[value_col]
     for key, group in groups:
         values_arr = group.values
-        assert np.allclose(values_arr[:,None], values_arr, rtol=0.01),\
+        assert np.allclose(values_arr[:, None], values_arr, rtol=0.01),\
             f"duplicates for {key} had very different values: {group}"
     return df.drop_duplicates(id_cols)
 
@@ -41,7 +45,7 @@ def drop_bad_rows(df):
 def prep_goers():
     """Prep those who want to go ("potential immmigrants") to a country."""
     df = pd.read_csv(
-        f'{get_input_dir()}/LinkedInRecruiterBaseratesSimple_withTime_2021-03-30.csv'
+        f"{CONFIG['directories.data']['raw']}/LinkedInRecruiterBaseratesSimple_withTime_2021 - 03 - 30.csv"
     ).assign(query_date=lambda x: x['query_time'].str[:-9]).rename(
         columns={'query_country': 'country_dest', 'total': 'goers'})
     assert (df['query_info'] == 'r4').values.all()
@@ -79,13 +83,15 @@ def merge_goers_total(goers_df, users_df):
 
 def get_rank_over_time(df, value, metric_name):
     """return rank of destination countries."""
-    return (df
-    .assign(
-        rank=df.groupby('date_key')[f'{value}'].rank(
-            ascending=False, method='first', na_option='bottom'))
-    .pivot(index='rank', columns='date_key', values=['country_dest', f'{value}'])
-    .sort_index(axis=1, level=[1, 0])
-    .rename(columns={f'{value}': f'{metric_name}'}))
+    return (
+        df.assign(
+            rank=df.groupby('date_key')[f'{value}'].rank(
+                ascending=False, method='first', na_option='bottom'))
+          .pivot(index='rank', columns='date_key',
+                 values=['country_dest', f'{value}'])
+          .sort_index(axis=1, level=[1, 0])
+          .rename(columns={f'{value}': f'{metric_name}'})
+        )
 
 
 def main():
@@ -93,17 +99,21 @@ def main():
     users_df = prep_total_users()
     df = merge_goers_total(goers_df, users_df)
     save_output(df, 'goers')
-    writer = pd.ExcelWriter(f'{get_output_dir()}/destination_ranks.xlsx', engine='xlsxwriter')
-    get_rank_over_time(df, 'goers', 'number').to_excel(writer, sheet_name='num')
-    get_rank_over_time(df, 'ratio', 'proportion').to_excel(writer, sheet_name='prop')
+    writer = pd.ExcelWriter(
+        f"{CONFIG['directories.data']['processed']}/destination_ranks.xlsx",
+        engine='xlsxwriter'
+    )
+    get_rank_over_time(df, 'goers', 'number').to_excel(
+        writer, sheet_name='num')
+    get_rank_over_time(df, 'ratio', 'proportion').to_excel(
+        writer, sheet_name='prop')
     get_rank_over_time(df.query("eu_plus == 1"), 'goers', 'number').to_excel(
         writer, sheet_name='eu_num')
-    get_rank_over_time(df.query("eu_plus == 1"), 'ratio', 'proportion').to_excel(
+    get_rank_over_time(
+        df.query("eu_plus == 1"), 'ratio', 'proportion').to_excel(
         writer, sheet_name='eu_prop')
     writer.save()
 
 
 if __name__ == "__main__":
     main()
-
-    

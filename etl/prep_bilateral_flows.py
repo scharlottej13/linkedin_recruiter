@@ -9,9 +9,12 @@ import pandas as pd
 from scipy.stats import variation as cv
 from pycountry import countries
 
-from utils.io import get_input_dir, save_output
+from utils.io import save_output
 from utils.misc import (no_duplicates, test_no_duplicates,
                         iso2_to_iso3, get_location_hierarchy)
+from configurator import Config
+
+CONFIG = Config()
 
 
 def get_latest_data():
@@ -22,13 +25,13 @@ def get_latest_data():
 def read_data():
     # first grab the column names we want
     keep_cols = set(pd.read_csv(
-        path.join(get_input_dir(), get_latest_data()),
+        path.join(f"{CONFIG['directories.data']['raw']}", get_latest_data()),
         nrows=0).columns) - set(
             ['Unnamed: 0', 'normalized1', 'normalized2',
              'response', 'maxgdp_to', 'maxgdp_from']
         )
     df = pd.read_csv(
-        path.join(get_input_dir(), get_latest_data()),
+        path.join(f"{CONFIG['directories.data']['raw']}", get_latest_data()),
         usecols=keep_cols
     )
     replace_dict = {
@@ -70,7 +73,7 @@ def prep_country_area():
     http://www.fao.org/faostat/en/#data/RL
     """
     return pd.read_csv(
-        path.join(get_input_dir(), 'FAO/FAOSTAT_data_2-1-2021.csv')
+        path.join(f"{CONFIG['directories.data']['raw']}", 'FAO/FAOSTAT_data_2-1-2021.csv')
     ).dropna(subset=['Value']).assign(
         value=lambda x: x['Value'] * 10,
         iso3=lambda x: x['Area Code'].str.lower()
@@ -81,7 +84,7 @@ def prep_gdp():
     """Clean up file with GDP."""
     df = pd.read_csv(
         path.join(
-            get_input_dir(),
+            f"{CONFIG['directories.data']['raw']}",
             'API_NY/API_NY.GDP.MKTP.CD_DS2_en_csv_v2_2001204.csv'
         ), header=2, converters={'Country Code': lambda x: str.lower(x)}).drop(
             ['Indicator Name', 'Indicator Code', 'Unnamed: 65'], axis=1
@@ -126,11 +129,11 @@ def prep_geo():
     dist_unweighted: average distance between (?) (not population weighted)
     """
     cepii = pd.read_excel(
-        path.join(get_input_dir(), 'CEPII_distance/dist_cepii.xls'),
+        path.join(f"{CONFIG['directories.data']['raw']}", 'CEPII_distance/dist_cepii.xls'),
         converters=dict(zip(['iso_o', 'iso_d'], [lambda x: str.lower(x)]*2))
     ).replace({'rom': 'rou'})
     maciej = pd.read_csv(
-        path.join(get_input_dir(), 'maciej_distance/DISTANCE.csv'),
+        path.join(f"{CONFIG['directories.data']['raw']}", 'maciej_distance/DISTANCE.csv'),
         keep_default_na=False,
         # NA iso2 in origin/dest columns is not a null value, but Namibia
         na_values=dict(zip(['variable', 'src_ref_db', 'values'], ['NA']))
@@ -178,7 +181,7 @@ def prep_language():
     prox1 and prox2 are unadjusted versions of lp1 and lp2?
     """
     df = pd.read_stata(
-        path.join(get_input_dir(), 'CEPII_language/CEPII_language.dta'))
+        path.join(f"{CONFIG['directories.data']['raw']}", 'CEPII_language/CEPII_language.dta'))
     # belgium & luxembourg are one row, split into 2
     blx_dict = {'Belgium': 'BEL', 'Luxembourg': 'LUX'}
     blx = df.loc[(df['iso_o'] == 'BLX') | (df['iso_d'] == 'BLX')].assign(
@@ -208,7 +211,7 @@ def prep_internet_usage():
     """
     internet_dict = pd.read_csv(
         path.join(
-            get_input_dir(),
+            f"{CONFIG['directories.data']['raw']}",
             'API_IT/API_IT.NET.USER.ZS_DS2_en_csv_v2_1928189.csv'),
         # 2018 is most recent year with complete data by country
         header=2, usecols=['Country Code', '2018'],
@@ -225,7 +228,7 @@ def prep_eu_states():
     Data pulled from europa.eu
     """
     return pd.read_csv(
-        path.join(get_input_dir(), 'eu_countries.csv'),
+        path.join(f"{CONFIG['directories.data']['raw']}", 'eu_countries.csv'),
         converters={'country': lambda x: countries.get(name=x).alpha_3.lower()}
     ).set_index('country')
 

@@ -12,7 +12,7 @@ class Config:
         interpolate_vars: Optional[Dict[str, str]] = None,
     ):
         self.config_dir = (
-            Path(__file__).parent.parent / "config"
+            Path(__file__).parent
             if config_dir is None
             else Path(config_dir)
         )
