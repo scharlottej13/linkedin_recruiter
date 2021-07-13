@@ -51,7 +51,7 @@ class Covariates:
 class ModelOptions(Covariates):
     config = Config()
     model_versions = f"{config['directories.data']['model']}/model_versions.csv"
-    r_script = f"{config['directories']['code']}/model/not_that_kind_of_model.R"
+    r_script = f"{config['directories']['code']}/model/gravity_model.R"
 
     def __init__(self, model_type, location, description,
                  covariates, min_n, min_prop, recip_only):
