@@ -16,9 +16,12 @@ class Covariates:
     def __init__(self):
         self.number_of_covs = len(self.cov_list)
         self.dep_var = 'flow_median'
-        self.distance_covs = [x for x in self.cov_list if 'dist' in x]
+        self.distance_covs = [
+            'dist_pop_weighted',
+            'dist_unweighted',
+            'dist_biggest_cities']
         self.geo_covs = ['contig', 'schengen', 'eurozone', 'eea', 'eu'] + \
-            [x for x in self.cov_list if 'area' in x
+            [x for x in self.cov_list if 'area' in x  # area_orig, area_dest eg
              or 'region' in x or 'country' in x]
         self.colonizer_covs = ['col45', 'curcol', 'smctry', 'colony', 'comcol']
         self.language_covs = ['cnl', 'csl', 'col', 'prox1', 'prox2', 'lp1',
@@ -42,7 +45,7 @@ class Covariates:
     def log_tformed_covariates(self):
         return \
             [x for x in self.numeric_covariates() if 'area' in x
-             or 'users' in x or 'pop' in x] + self.distance_covs
+             or 'users' in x or 'pop' in x or 'gdp' in x] + self.distance_covs
 
     def dummy_covariates(self):
         return list(set(self.geo_covs) - set(self.numeric_covariates()))
@@ -170,8 +173,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--covariates', help='list of strings', nargs='+',
         choices=Covariates.cov_list,
-        default=['dist_biggest_cities', 'area_orig', 'area_dest',
-                 'users_orig_median', 'users_dest_median'])
+        default=['dist_pop_weighted', 'area_orig', 'area_dest',
+                 'users_orig_median', 'users_dest_median', 'csl',
+                 'contig'])
     parser.add_argument(
         '--min_n', help='minimum count', type=int, default=1)
     parser.add_argument(
