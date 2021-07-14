@@ -13,7 +13,7 @@ dest_col <- paste0(level_arg, "_dest")
 # flexible for windows or linux os
 base_dir <- get_parent_dir()
 
-get_data <- function(level_arg, group_arg, recip, pct) {
+get_data <- function(level_arg, group_arg, recip) {
   data_dir <- file.path(base_dir, "processed-data")
   filename <- paste0("chord_diagram_", level_arg)
   if (recip) {
@@ -37,7 +37,7 @@ df1 <- read.csv(
       arrange(order1)
 color_vector <- setNames(df1$col1, df1$loc_name)
 
-df <- get_data(level_arg, group_arg, FALSE, FALSE)
+df <- get_data(level_arg, group_arg, FALSE)
 plot_n_save_wrapper(
   df, df1, color_vector, base_dir, level_arg, group_arg,
   recip = FALSE, percent = TRUE
