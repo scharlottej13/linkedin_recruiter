@@ -17,38 +17,49 @@ from configurator import Config
 CONFIG = Config()
 
 
-def get_latest_data():
-    # data collected by Tom, thx Tom!
-    return '2021-05-07_LinkedInRecruiter_dffromtobase_merged_gdp_wr6.csv'
-
-
-def read_data():
-    # first grab the column names we want
-    keep_cols = set(pd.read_csv(
-        path.join(f"{CONFIG['directories.data']['raw']}", get_latest_data()),
-        nrows=0).columns) - set(
-            ['Unnamed: 0', 'normalized1', 'normalized2',
-             'response', 'maxgdp_to', 'maxgdp_from']
-        )
+def read_data(date):
+    filename = f'{date}_LinkedInRecruiter_country_from_to_number_wr6.csv'
     df = pd.read_csv(
-        path.join(f"{CONFIG['directories.data']['raw']}", get_latest_data()),
-        usecols=keep_cols
+        path.join(f"{CONFIG['directories.data']['raw']}", filename),
+        usecols=[
+            'country_from', 'country_to', 'number_people_who_indicated',
+            'query_time_round', 'query_info'
+        ]
     )
     replace_dict = {
-        '_x': '_orig', '_y': '_dest', '_from': '_orig', 'population': 'pop',
-        '_to': '_dest', 'linkedin': '', 'countrycode': 'iso3',
-        'number_people_who_indicated': 'flow', 'max': ''}
+        '_from': '_orig', '_to': '_dest', 'linkedin': '',
+        'number_people_who_indicated': 'flow'
+    }
     df.columns = df.columns.to_series().replace(replace_dict, regex=True)
     return (df.assign(query_date=df['query_time_round'].str[:-9])
               .drop(['query_time_round'], axis=1, errors='ignore'))
 
 
+def get_iso3(df):
+    """Get iso3 from country names.
+
+    Also, drop all rows that aren't countries and fix duplicates.
+    """
+    pycountry.countries.get(name='')
+    raise NotImplementedError
+
+
+def prep_population(df):
+    """Prep file with popluation."""
+    raise NotImplementedError
+
+
 def reshape_long_wide(df, wide_col='query_info',
                       value_cols=['users_orig', 'users_dest', 'flow'],
                       hack=True):
-    """Reshape wide_col from long to wide."""
+    """Reshape wide_col from long to wide.
+
+    query_info column takes two values: 'r4' and 'r6_remote'
+    r4 is those open to relocating, r6 is AND open to remote work
+    """
     if hack:
         # CHANGE THIS LATER - Tom is investigating
+        # basically for now, we only trust r4
         return df[df['query_info'] == 'r4'].drop('query_info', axis=1)
         # return df[~(df['query_date'].str.startswith('2021-03-2'))].drop(
         #     [wide_col], axis=1)
@@ -60,8 +71,6 @@ def reshape_long_wide(df, wide_col='query_info',
                             values=value_cols).reset_index()
         df.columns = ['_'.join(x) if '' not in x else ''.join(x)
                       for x in df.columns]
-        # query_info column takes two values: 'r4' and 'r6_remote'
-        # r4 is those open to relocating, r6 is AND open to remote work
         df.columns = df.columns.to_series().replace({'_r[46]': ''}, regex=True)
         return df
 
@@ -73,7 +82,9 @@ def prep_country_area():
     http://www.fao.org/faostat/en/#data/RL
     """
     return pd.read_csv(
-        path.join(f"{CONFIG['directories.data']['raw']}", 'FAO/FAOSTAT_data_2-1-2021.csv')
+        path.join(
+            f"{CONFIG['directories.data']['raw']}",
+            'FAO/FAOSTAT_data_2-1-2021.csv')
     ).dropna(subset=['Value']).assign(
         value=lambda x: x['Value'] * 10,
         iso3=lambda x: x['Area Code'].str.lower()
@@ -129,11 +140,15 @@ def prep_geo():
     dist_unweighted: average distance between (?) (not population weighted)
     """
     cepii = pd.read_excel(
-        path.join(f"{CONFIG['directories.data']['raw']}", 'CEPII_distance/dist_cepii.xls'),
+        path.join(
+            f"{CONFIG['directories.data']['raw']}",
+            'CEPII_distance/dist_cepii.xls'),
         converters=dict(zip(['iso_o', 'iso_d'], [lambda x: str.lower(x)]*2))
     ).replace({'rom': 'rou'})
     maciej = pd.read_csv(
-        path.join(f"{CONFIG['directories.data']['raw']}", 'maciej_distance/DISTANCE.csv'),
+        path.join(
+            f"{CONFIG['directories.data']['raw']}",
+            'maciej_distance/DISTANCE.csv'),
         keep_default_na=False,
         # NA iso2 in origin/dest columns is not a null value, but Namibia
         na_values=dict(zip(['variable', 'src_ref_db', 'values'], ['NA']))
@@ -181,7 +196,9 @@ def prep_language():
     prox1 and prox2 are unadjusted versions of lp1 and lp2?
     """
     df = pd.read_stata(
-        path.join(f"{CONFIG['directories.data']['raw']}", 'CEPII_language/CEPII_language.dta'))
+        path.join(
+            f"{CONFIG['directories.data']['raw']}",
+            'CEPII_language/CEPII_language.dta'))
     # belgium & luxembourg are one row, split into 2
     blx_dict = {'Belgium': 'BEL', 'Luxembourg': 'LUX'}
     blx = df.loc[(df['iso_o'] == 'BLX') | (df['iso_d'] == 'BLX')].assign(
@@ -190,7 +207,7 @@ def prep_language():
     ).explode('country_o').explode('country_d')
     blx['iso_o'] = blx['country_o'].map(blx_dict).fillna(blx['iso_o'])
     blx['iso_d'] = blx['country_d'].map(blx_dict).fillna(blx['iso_d'])
-    # and, of course, append 2 rows for bel <-> lux
+    # and, of course, append 2 rows for bel <-> lux corridor
     x = pd.DataFrame(dict(zip(
         ['iso_o', 'iso_d', 'col', 'csl', 'cnl', 'prox1',
          'lp1', 'prox2', 'lp2'],
@@ -282,7 +299,7 @@ def sensitivity_reciprocal_pairs(df, across=True):
 
 
 def _get_reciprocal_pairs(df, across=False, drop_dates=None):
-    # TODO I think this could be faster
+    # TODO I think this could be faster/better
     # https://realpython.com/numpy-array-programming/
     id_cols = ['iso3_orig', 'iso3_dest', 'query_date']
     Countrypair = namedtuple('Countrypair', ['orig', 'dest'])
@@ -350,7 +367,7 @@ def get_net_migration(df, value_col='flow', add_cols=['query_date']):
         net_flow=lambda x:
         x.groupby(dest_cols)[value_col].transform(sum) -
         x.groupby(orig_cols)[value_col].transform(sum),
-        # use 100 to compare w/ GWP
+        # use 100 to compare w/ Gallup World Poll
         net_rate_100=lambda x: (x['net_flow'] / x['users_orig']) * 100)
 
 
@@ -488,7 +505,7 @@ def fill_missing_borders(df):
 
 
 def fix_query_date(df, cutoff=np.timedelta64(10, 'D')):
-    """Adjust date of collection for timeout errors."""
+    """Adjust date of data collection for timeout errors."""
     dates = sorted([np.datetime64(x) for x in df['query_date'].unique()])
     combine_dates = {
         str(dates[n + 1]): str(dates[n])
@@ -521,8 +538,8 @@ def data_validation(
     return df
 
 
-def main(update_chord_diagram):
-    df = read_data().pipe(reshape_long_wide)
+def main(date, update_chord_diagram):
+    df = read_data(date).pipe(reshape_long_wide)
     # see changes across data collection dates
     df.pipe(get_pct_change).pipe(save_output, 'pct_change')
 
@@ -552,9 +569,17 @@ def main(update_chord_diagram):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
+    # sure, you could say 'look for those files that are sort of like this'
+    # but I think requiring a date argument is better for avoiding
+    # bugs related to incorrect versioning
     parser.add_argument(
-        '-update', help='whether to update input data for the chord diagram',
+        'date', help='date of data collection YYYY-MM-DD', type=str)
+    parser.add_argument(
+        '-update_chord_diagram',
+        help='whether to update input data for the chord diagram',
         action='store_true'
     )
     args = parser.parse_args()
-    main(args.update)
+    print(args)
+    print(vars(args))
+    main(**vars(args))

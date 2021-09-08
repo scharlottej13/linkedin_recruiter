@@ -2,7 +2,7 @@
 from os import path
 import pandas as pd
 from pycountry import countries, historic_countries
-from utils.io import get_input_dir
+from configurator import Config
 
 
 def get_location_hierarchy():
@@ -10,8 +10,10 @@ def get_location_hierarchy():
     UNSD: https://unstats.un.org/unsd/methodology/m49/overview/
     Abel/Cohen: https://www.nature.com/articles/s41597-019-0089-3
     """
+    config = Config()
+    raw_data_dir = config['directories.data']['raw']
     loc_df = pd.read_csv(
-        path.join(get_input_dir(), 'UNSD-methodology.csv'), usecols=[3, 5, 11],
+        path.join(raw_data_dir, 'UNSD-methodology.csv'), usecols=[3, 5, 11],
         header=0, names=['region', 'subregion', 'iso3']
     ).append(pd.DataFrame(
         # manually fill missing entries
@@ -20,7 +22,7 @@ def get_location_hierarchy():
          'iso3': ['twn', 'nru']}), ignore_index=True)
     # paper from Abel & Cohen has different groups, call them "midregions"
     return loc_df.assign(iso3=loc_df['iso3'].str.lower()).merge(
-        pd.read_csv(path.join(get_input_dir(), 'abel_regions.csv')),
+        pd.read_csv(path.join(raw_data_dir, 'abel_regions.csv')),
         how='left').set_index('iso3')
 
 
@@ -41,6 +43,42 @@ def iso2_to_iso3(x):
     # sometimes x is Null to begin with, this f'n doesn't need to care
     else:
         return x
+
+
+def name_to_iso3(x):
+    """Helper function to get iso3 from country name."""
+    manual_dict = {
+        'Kosovo': 'XKX', 'Iran': 'IRN', 'Syria': 'SYR',
+        'FYRO Macedonia': 'MKD', 'Moldova': 'MDA',
+        'Republic of the Congo': 'COG', 'Congo (DRC)': 'COD',
+        'Cape Verde': 'CPV', 'São Tomé and Príncipe': 'STP',
+        'Tanzania': 'TZA', 'The Gambia': 'GMB',
+        'British Virgin Islands': 'VGB', 'Saint Barthelemy': 'BLM',
+        'Czech Republic': 'CZE', 'Reunion': 'REU',
+        'Laos': 'LAO', 'South Korea': 'KOR', 'Russia': 'RUS',
+        'The Bahamas': 'BHS', 'Côte d’Ivoire': 'CIV',
+        'Federated States of Micronesia': 'FSM'
+    }
+    iso3 = None
+    try:
+        iso3 = countries.get(name=x).alpha_3
+    except AttributeError:
+        try:
+            iso3 = countries.get(common_name=x).alpha_3
+        except AttributeError:
+            try:
+                iso3 = historic_countries.get(name=x).alpha_3
+            except AttributeError:
+                try:
+                    iso3 = manual_dict[x]
+                except LookupError:
+                    try:
+                        print(f'searching for {x}')
+                        print(countries.search_fuzzy(x))
+                    except LookupError:
+                        print(f'iso3 for {x} not found')
+                    return iso3
+    return iso3.lower()
 
 
 def no_duplicates(df, id_cols, value_col, verbose=False):
