@@ -112,8 +112,9 @@ save_model <- function(
     }
   }
 
-cl_args <- commandArgs(trailingOnly = T)
-mvid <- as.numeric(cl_args[1])
+# cl_args <- commandArgs(trailingOnly = T)
+# mvid <- as.numeric(cl_args[1])
+mvid <- 42
 base_dir <- get_parent_dir()
 args <- read.csv(
   file.path(base_dir, "model-outputs", "model_versions.csv")

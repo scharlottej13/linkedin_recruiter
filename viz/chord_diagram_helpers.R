@@ -49,8 +49,10 @@ plot_n_save_wrapper <- function(
 ) {
   outpath <- get_outpath(base_dir, loc_level, loc_group, recip, percent)
   pdf(outpath, width = 10, height = 12)
-  circos.par(start.degree = 90, gap.degree = 4, track.margin = c(-0.1, 0.1),
-             points.overflow.warning = FALSE)
+  circos.par(
+    start.degree = 90,
+    gap.degree = 4, track.margin = c(-0.1, 0.1),
+    points.overflow.warning = FALSE)
   chordDiagram(
     x = df, grid.col = color_vector, transparency = 0.25,
     directional = 1, direction.type = c("arrows", "diffHeight"),
@@ -97,12 +99,29 @@ plot_n_save_wrapper <- function(
         }
       } else {
         # grab values for flow range
-        total <- df %>%
+        sum1 <- df %>%
           filter(midregion_orig == sector_index |
             midregion_dest == sector_index) %>%
           summarise(across(flow_median, sum)) %>%
           pull(flow_median)
-        # no need to split
+        # add 'double counting' (may revisit this)
+        self <- df %>%
+          filter(midregion_orig == sector_index &
+          midregion_dest == sector_index) %>%
+          pull(flow_median)
+        total <- sum1 + self
+        # set the ticks
+        sequence <- seq(0, 1, 0.20)
+        circos.axis(
+          labels = FALSE, major.at = sequence, minor.ticks = 1,
+          labels.niceFacing = FALSE, labels.pos.adjust = FALSE
+        )
+        # manually add tick labels
+        for (p in sequence) {
+          circos.text(p, mean(ylim) + 1, p,
+          cex = 0.8, adj = c(0.5, 0), niceFacing = FALSE)
+        }
+        # add text for locations
         circos.text(
           x = mean(xlim), y = 6, labels = sector_index,
           facing = style, cex = cex, niceFacing = TRUE
@@ -114,16 +133,6 @@ plot_n_save_wrapper <- function(
           paste0("N = ", prettyNum(round(total, -3), big.mark = ",")),
           cex = 0.8, adj = c(0.5, 0), niceFacing = TRUE
         )
-        sequence <- seq(0, 1, 0.20)
-        # first set the ticks
-        circos.axis(labels = TRUE, major.at = sequence, minor.ticks = 1)
-        # then create the text
-        # for (p in sequence) {
-        #   if (p != 0) {
-        #     circos.text(p, mean(ylim) + 1, p,
-        #     cex = 0.8, adj = c(0.5, 0), niceFacing = TRUE)
-        #   }
-        # }
       }
     }
   )

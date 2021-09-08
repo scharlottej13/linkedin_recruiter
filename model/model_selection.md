@@ -36,4 +36,9 @@ GDP is highly collinear w/ number of linkedin users, so don't want to add that.
 
 proportion of population using linkedin & internet are kind of the same, add one or the other (but not both)
 
-I think using whether two countries share a border *and* distance is redundant
+I think using whether two countries share a border *and* distance is redundant. Model verion 39 has this, and when added it drops the coefficient for distance.
+
+comparing model versions 26 vs. 38 (prop internet vs. prop linkedin users)-- 26 is a little better, slightly higher adj. r2 and betas for internet are a bit stronger. Try this one again w/o area (b/c those betas are close to 0)
+- w/o area at all is slightly worse than w/ only area in the destination
+- just area in destination seems enough? basically, versions 26 and 40 are good.
+(re run 26 since I added rmse as a calculation, so now it's 42)

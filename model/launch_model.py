@@ -173,9 +173,9 @@ if __name__ == "__main__":
     parser.add_argument(
         '--covariates', help='list of strings', nargs='+',
         choices=Covariates.cov_list,
-        default=['dist_pop_weighted', 'area_orig', 'area_dest',
+        default=['dist_pop_weighted', 'area_dest',
                  'users_orig_median', 'users_dest_median', 'csl',
-                 'contig'])
+                 'internet_dest', 'internet_orig'])
     parser.add_argument(
         '--min_n', help='minimum count', type=int, default=1)
     parser.add_argument(
