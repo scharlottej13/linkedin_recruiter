@@ -45,8 +45,10 @@ def iso2_to_iso3(x):
         return x
 
 
-def name_to_iso3(x):
+def name_to_iso3(x, verbose=False):
     """Helper function to get iso3 from country name."""
+    # TODO this manual mapping doesn't capture *every* country
+    # those still missing are disputed areas and small island nations
     manual_dict = {
         'Kosovo': 'XKX', 'Iran': 'IRN', 'Syria': 'SYR',
         'FYRO Macedonia': 'MKD', 'Moldova': 'MDA',
@@ -57,7 +59,8 @@ def name_to_iso3(x):
         'Czech Republic': 'CZE', 'Reunion': 'REU',
         'Laos': 'LAO', 'South Korea': 'KOR', 'Russia': 'RUS',
         'The Bahamas': 'BHS', 'Côte d’Ivoire': 'CIV',
-        'Federated States of Micronesia': 'FSM'
+        'Federated States of Micronesia': 'FSM', 'Swaziland': 'SWZ',
+        'US Virgin Islands': 'VIR', 'St Kitts and Nevis': 'KNA'
     }
     iso3 = None
     try:
@@ -73,10 +76,13 @@ def name_to_iso3(x):
                     iso3 = manual_dict[x]
                 except LookupError:
                     try:
-                        print(f'searching for {x}')
-                        print(countries.search_fuzzy(x))
+                        if verbose:
+                            print(f'searching for {x}')
+                            print(countries.search_fuzzy(x))
                     except LookupError:
-                        print(f'iso3 for {x} not found')
+                        if verbose:
+                            print(f'iso3 for {x} not found')
+                    # will return None
                     return iso3
     return iso3.lower()
 

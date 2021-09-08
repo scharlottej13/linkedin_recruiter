@@ -11,7 +11,7 @@ from pycountry import countries
 
 from utils.io import save_output
 from utils.misc import (no_duplicates, test_no_duplicates,
-                        iso2_to_iso3, get_location_hierarchy)
+                        iso2_to_iso3, name_to_iso3, get_location_hierarchy)
 from configurator import Config
 
 CONFIG = Config()
@@ -31,17 +31,39 @@ def read_data(date):
         'number_people_who_indicated': 'flow'
     }
     df.columns = df.columns.to_series().replace(replace_dict, regex=True)
+    df = get_iso3(df)
     return (df.assign(query_date=df['query_time_round'].str[:-9])
               .drop(['query_time_round'], axis=1, errors='ignore'))
 
 
-def get_iso3(df):
-    """Get iso3 from country names.
+def get_iso3(df, verbose=True):
+    """Get iso3 from location names.
 
     Also, drop all rows that aren't countries and fix duplicates.
     """
-    pycountry.countries.get(name='')
-    raise NotImplementedError
+    country_names = list(
+        set(df['country_orig']).union(set(df['country_dest'])))
+    iso3_dict = dict(zip(
+        country_names, [name_to_iso3(x, verbose) for x in country_names]))
+    df['iso3_orig'] = df['country_orig'].map(iso3_dict)
+    df['iso3_dest'] = df['country_dest'].map(iso3_dict)
+    # handle null iso3s
+    null_iso3 = (df['iso3_dest'].isnull() | df['iso3_orig'].isnull())
+    df[null_iso3].drop_duplicates().to_csv(path.join(
+        CONFIG['directories.data']['processed'], 'dropped_locations.csv'
+    ), index=False)
+    # handle duplicate countries
+    # TODO this still doesn't work
+    df = df[~null_iso3].groupby(
+        ['iso3_orig', 'iso3_dest', 'query_time_round', 'query_info'],
+        as_index=False
+    )['flow'].sum()
+    df['country_orig'] = df['iso3_orig'].apply(
+        lambda x: countries.get(alpha_3=x).name)
+    df['country_dest'] = df['iso3_dest'].apply(
+        lambda x: countries.get(alpha_3=x).name)
+    return df
+
 
 
 def prep_population(df):
