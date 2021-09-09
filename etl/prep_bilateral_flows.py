@@ -3,6 +3,7 @@
 from collections import defaultdict, namedtuple
 from os import listdir, path, pipe
 import argparse
+import json
 
 import numpy as np
 import pandas as pd
@@ -91,14 +92,25 @@ def reshape_long_wide(df, wide_col='query_info',
 
 
 def prep_population():
-    """Prep file with popluation."""
-    # TODO this function should grab population estimates
-    # and then merge them using iso3_dest and iso3_orig
-    # this info was previously merged on by Tom, but he flagged
-    # that it'd probably be better to pull population myself from
-    # a consistently updated source (makes sense!)
-    # and I haven't had time to do that
-    raise NotImplementedError
+    """Prep file with popluation.
+
+    Downloaded from UN Poplution Division, population in 1000s
+    """
+    def _helper_func(x):
+        try:
+            return countries.get(numeric=str(x).zfill(3)).alpha_3.lower()
+        except AttributeError:
+            return ''
+    return pd.read_excel(
+        path.join(
+            f"{CONFIG['directories.data']['raw']}",
+            'WPP2019_POP_F01_1_TOTAL_POPULATION_BOTH_SEXES.xlsx'),
+        engine='openpyxl', header=16,
+        converters={'Country code': lambda x: _helper_func(x),
+                    '2020': lambda x: x * 1000}
+    ).query(
+        "Type == 'Country/Area'"
+    ).set_index('Country code')['2020'].to_dict()
 
 
 def prep_country_area():
@@ -137,7 +149,6 @@ def prep_gdp():
 
 def prep_hdi():
     """Clean up file with HDI."""
-    # same story as population, see above
     raise NotImplementedError
 
 
@@ -480,11 +491,8 @@ def add_metadata(df):
     gdp_map = prep_gdp()
     area_map = prep_country_area()
     int_use = prep_internet_usage()
-    for k, v in {
-        'area': area_map, 'internet': int_use, 'gdp': gdp_map
-        # TODO uncomment line below when the 'get population' function works
-        # 'prop': ''
-    }.items():
+    pop_map = prep_population()
+    for k, v in {'area': area_map, 'internet': int_use, 'gdp': gdp_map, 'pop': pop_map, 'prop': ''}.items():
         for x in ['orig', 'dest']:
             if k == 'prop':
                 df[f'{k}_{x}'] = df[f'users_{x}'] / df[f'pop_{x}']
