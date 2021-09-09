@@ -1,23 +1,13 @@
 import argparse
 from collections import defaultdict
 from os import mkdir, path
-
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from utils.io import get_output_dir, get_working_dir
+from configurator import Config
 
-
-def get_plot_dir(custom_dir=None, sub_dir=None):
-    # TODO this is bad, I copied it from another file oops
-    if sub_dir:
-        outdir = path.join(get_working_dir(custom_dir), 'plots', sub_dir)
-    else:
-        outdir = path.join(get_working_dir(custom_dir), 'plots')
-    if not path.exists(outdir):
-        mkdir(outdir)
-    return outdir
+CONFIG = Config()
 
 
 def get_avg(df, x, metric):
@@ -95,12 +85,15 @@ def line_plt(df, iso, avg_prop, avg_n, x, y, split=None):
     fig.tight_layout()
     # plt.show()
     plt.savefig(
-        f'{get_plot_dir(sub_dir=iso)}/{iso}_{x}_{suffix}.png', dpi=300)
+        f"{CONFIG['directories.data']['viz']}/{iso}/{iso}_{x}_{suffix}.png",
+        dpi=300
+    )
     plt.close()
 
 
 def prep_data(iso, x, y):
-    df = pd.read_csv(f"{get_output_dir()}/model_input.csv")
+    df = pd.read_csv(
+        f"{CONFIG['directories.data']['processed']}/model_input.csv")
     # restrict to countries that show up at least a few times
     keep_isos = list(
         df.query(f"iso3_{x} == '{iso}'").groupby(

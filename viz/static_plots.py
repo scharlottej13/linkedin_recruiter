@@ -4,21 +4,11 @@ import seaborn as sns
 import matplotlib.pyplot as plt
 from os import path, mkdir
 from matplotlib.patches import Rectangle
-# from matplotlib.colors import LinearSegmentedColormap
-from utils.io import get_output_dir, get_working_dir
 from scipy import stats
 import statsmodels.stats.api as sms
-# from math import e
+from configurator import Config
 
-
-def get_plot_dir(custom_dir=None, sub_dir=None):
-    if sub_dir:
-        outdir = path.join(get_working_dir(custom_dir), 'plots', sub_dir)
-    else:
-        outdir = path.join(get_working_dir(custom_dir), 'plots')
-    if not path.exists(outdir):
-        mkdir(outdir)
-    return outdir
+CONFIG = Config()
 
 
 def log_tform(df, log_cols):
@@ -106,11 +96,13 @@ def data_availability(outdir):
     for suffix, str_title in recip_str_dict.items():
         for loc_level in ['EU+UK', 'Global']:
             if loc_level == 'EU+UK':
-                df = pd.read_csv(f"{get_output_dir()}/model_input{suffix}.csv"
-                    ).query('eu_plus == 1')
+                df = pd.read_csv(
+                    f"{CONFIG['directories.data']['processed']}/model_input{suffix}.csv"
+                ).query('eu_plus == 1')
                 df_list.append(make_it_nice(df, str_title, loc_level))
             else:
-                df = pd.read_csv(f"{get_output_dir()}/model_input{suffix}.csv")
+                df = pd.read_csv(
+                    f"{CONFIG['directories.data']['processed']}/model_input{suffix}.csv")
                 df_list.append(make_it_nice(df, str_title, loc_level))
     pd.concat(df_list).pivot_table(
         index='Date', columns=['Locations', 'Pair Type'],
@@ -182,7 +174,8 @@ def get_top_countries(df, value, country_col='country_dest', n=15):
 def plt_over_time(outdir):
     """Prep data for line plot over time."""
     for value_col in ['users_dest', 'goers']:
-        df = pd.read_csv(f"{get_output_dir()}/goers.csv").dropna(
+        df = pd.read_csv(
+            f"{CONFIG['directories.data']['processed']}/goers.csv").dropna(
             subset=['users_dest']).sort_values(
                 by=['date_key', value_col], ascending=[True, False])
         n = 15
@@ -244,8 +237,9 @@ def main(save_hists=False, save_heatmaps=True, save_pairplots=False):
     if save_heatmaps:
         for recip in [True, False]:
             suffix = "_recip_pairs" * recip
-            df = pd.read_csv(f'{get_output_dir()}/variance{suffix}.csv')
-            outdir = get_plot_dir(sub_dir='recip' * recip)
+            df = pd.read_csv(
+                f"{CONFIG['directories.data']['processed']}/variance{suffix}.csv")
+            outdir = f"{CONFIG['directories.data']['viz']}/" + 'recip' * recip
             for loc in ['Europe', 'Global']:
                 if loc == 'Europe':
                     min_users = 200000
@@ -262,8 +256,9 @@ def main(save_hists=False, save_heatmaps=True, save_pairplots=False):
                 # corr_matrix(data, loc, loc.lower(), outdir)
                 # corr_matrix(data, loc, loc.lower(), outdir, type='spearman')
     for col in [None, 'recip', 'by_date_recip']:
-        outdir = get_plot_dir(sub_dir=col)
-        df = pd.read_csv(f"{get_output_dir()}/model_input.csv")
+        outdir = f"{CONFIG['directories.data']['viz']}/{col}"
+        df = pd.read_csv(
+            f"{CONFIG['directories.data']['processed']}/model_input.csv")
         if col is not None:
             df = log_tform(df, log_cols + ['net_flow', 'net_rate_100'])
         else:
@@ -287,4 +282,3 @@ def main(save_hists=False, save_heatmaps=True, save_pairplots=False):
 
 if __name__ == "__main__":
     main()
-    

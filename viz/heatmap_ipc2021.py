@@ -2,9 +2,11 @@ import pandas as pd
 import seaborn as sns
 import matplotlib.pyplot as plt
 from itertools import permutations
-from utils.io import get_working_dir
+from configurator import Config
 from datetime import datetime
 import argparse
+
+CONFIG = Config()
 
 
 def prep_heatmap_data(df, value, sort):
@@ -58,17 +60,19 @@ def heatmap(df, value, sort=False):
              rotation_mode="anchor")
     plt.tight_layout()
     sort_str = '_sorted' if sort else ''
+    out_dir = CONFIG['directories.data']['viz']
     plt.savefig(
-        f'{get_working_dir()}/plots/eu_heatmap_{value}{sort_str}.pdf')
+        f'{out_dir}/eu_heatmap_{value}{sort_str}.pdf')
     plt.savefig(
-        f'{get_working_dir()}/plots/_archive/\
+        f'{out_dir}/plots/_archive/\
         eu_heatmap_{value}{sort_str}_{datetime.now().date()}.pdf')
     plt.close()
 
 
 def main(value, sort):
     model_name = "cohen_eu_dist_biggest_cities_plus"
-    df = pd.read_csv(f"{get_working_dir()}/model-outputs/{model_name}.csv")
+    df = pd.read_csv(
+        f"{CONFIG['directories.data']['model']}/{model_name}.csv")
     df['pct_error'] = ((df['flow_median'] - df['preds']) / df['preds']) * 100
     df[[f'{x}_quant' for x in ['resids', 'pct_error']]] = \
         df[['resids', 'pct_error']].apply(

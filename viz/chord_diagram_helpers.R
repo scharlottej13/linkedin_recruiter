@@ -47,6 +47,8 @@ plot_n_save_wrapper <- function(
   df, df1, color_vector, base_dir, loc_level, loc_group,
   recip = FALSE, percent = FALSE, grouper = NULL
 ) {
+  orig_col <- paste0(loc_level, "_orig")
+  dest_col <- paste0(loc_level, "_dest")
   outpath <- get_outpath(base_dir, loc_level, loc_group, recip, percent)
   pdf(outpath, width = 10, height = 12)
   circos.par(
@@ -71,7 +73,7 @@ plot_n_save_wrapper <- function(
       cex <- 1.6
       style <- "bending"
       num_going <- df %>%
-        filter(midregion_orig == sector_index) %>%
+        filter(get(orig_col) == sector_index) %>%
         summarise(across(flow_median, sum)) %>%
         pull(flow_median)
       # Add ticks
@@ -100,14 +102,14 @@ plot_n_save_wrapper <- function(
       } else {
         # grab values for flow range
         sum1 <- df %>%
-          filter(midregion_orig == sector_index |
-            midregion_dest == sector_index) %>%
+          filter(get(orig_col) == sector_index |
+            get(dest_col) == sector_index) %>%
           summarise(across(flow_median, sum)) %>%
           pull(flow_median)
         # add 'double counting' (may revisit this)
         self <- df %>%
-          filter(midregion_orig == sector_index &
-          midregion_dest == sector_index) %>%
+          filter(get(orig_col) == sector_index &
+          get(dest_col) == sector_index) %>%
           pull(flow_median)
         total <- sum1 + self
         # set the ticks
