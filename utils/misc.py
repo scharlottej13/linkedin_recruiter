@@ -28,19 +28,23 @@ def get_location_hierarchy():
 
 def iso2_to_iso3(x):
     """Helper function to get iso3 from iso2."""
-    if x:
-        country_info = countries.get(alpha_2=x)
-        if country_info:
-            iso3 = country_info.alpha_3
-        elif historic_countries.get(alpha_2=x):
-            iso3 = historic_countries.get(alpha_2=x).alpha_3
-        # Kosovo is not UN official
-        elif x == 'XK':
-            iso3 = 'XKX'
-        else:
-            KeyError, f'iso3 for {x} not found'
-        return iso3.lower()
     # sometimes x is Null to begin with, this f'n doesn't need to care
+    if x:
+        iso3 = None
+        try:
+            iso3 = countries.get(alpha_2=x).alpha_3
+        except AttributeError:
+            try:
+                iso3 = historic_countries.get(alpha_2=x).alpha_3
+            except AttributeError:
+                try:
+                    # kosovo
+                    manual_dict = {'XK': 'XKX'}
+                    iso3 = manual_dict[x]
+                except LookupError:
+                    print(f'iso3 for {x} not found')
+                return iso3
+        return iso3.lower()
     else:
         return x
 
@@ -50,7 +54,7 @@ def name_to_iso3(x, verbose=False):
     # TODO this manual mapping doesn't capture *every* country
     # those still missing are disputed areas and small island nations
     manual_dict = {
-        'Kosovo': 'XKX', 'Iran': 'IRN', 'Syria': 'SYR',
+        'Iran': 'IRN', 'Syria': 'SYR',
         'FYRO Macedonia': 'MKD', 'Moldova': 'MDA',
         'Republic of the Congo': 'COG', 'Congo (DRC)': 'COD',
         'Cape Verde': 'CPV', 'São Tomé and Príncipe': 'STP',

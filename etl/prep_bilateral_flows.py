@@ -18,57 +18,49 @@ CONFIG = Config()
 
 
 def read_data(date):
-    filename = f'{date}_LinkedInRecruiter_country_from_to_number_wr6.csv'
+    filename = f'{date}_LinkedInRecruiter_dffromtobase_merged_wr6.csv'
     df = pd.read_csv(
         path.join(f"{CONFIG['directories.data']['raw']}", filename),
         usecols=[
             'country_from', 'country_to', 'number_people_who_indicated',
-            'query_time_round', 'query_info'
-        ]
+            'query_time_round', 'query_info', 'linkedinusers_from',
+            'linkedinusers_to']
     )
     replace_dict = {
         '_from': '_orig', '_to': '_dest', 'linkedin': '',
         'number_people_who_indicated': 'flow'
     }
     df.columns = df.columns.to_series().replace(replace_dict, regex=True)
-    df = get_iso3(df)
     return (df.assign(query_date=df['query_time_round'].str[:-9])
               .drop(['query_time_round'], axis=1, errors='ignore'))
 
 
-def get_iso3(df, verbose=True):
-    """Get iso3 from location names.
+def fix_iso3(df, verbose=True):
+    """Create iso3 columns from location names.
 
-    Also, drop all rows that aren't countries and fix duplicates.
+    Also drop rows that aren't countries and fix duplicates.
     """
+    suffixes = ['orig', 'dest']
     country_names = list(
         set(df['country_orig']).union(set(df['country_dest'])))
     iso3_dict = dict(zip(
         country_names, [name_to_iso3(x, verbose) for x in country_names]))
-    df['iso3_orig'] = df['country_orig'].map(iso3_dict)
-    df['iso3_dest'] = df['country_dest'].map(iso3_dict)
+    for x in suffixes:
+        df[f'iso3_{x}'] = df[f'country_{x}'].map(iso3_dict)
     # handle null iso3s
     null_iso3 = (df['iso3_dest'].isnull() | df['iso3_orig'].isnull())
     df[null_iso3].drop_duplicates().to_csv(path.join(
         CONFIG['directories.data']['processed'], 'dropped_locations.csv'
     ), index=False)
-    # handle duplicate countries
-    # TODO this still doesn't work
-    df = df[~null_iso3].groupby(
-        ['iso3_orig', 'iso3_dest', 'query_time_round', 'query_info'],
-        as_index=False
-    )['flow'].sum()
-    df['country_orig'] = df['iso3_orig'].apply(
-        lambda x: countries.get(alpha_3=x).name)
-    df['country_dest'] = df['iso3_dest'].apply(
-        lambda x: countries.get(alpha_3=x).name)
-    return df
-
-
-
-def prep_population(df):
-    """Prep file with popluation."""
-    raise NotImplementedError
+    df = df[~null_iso3]
+    # handle duplicate country names which have the same iso3
+    # e.g. FYRO Macedonia and North Macedonia
+    for x in suffixes:
+        df[f'country_{x}'] = df[f'iso3_{x}'].apply(
+            lambda x: countries.get(alpha_3=x.upper()).name
+        )
+    return df.drop_duplicates(
+        subset=['iso3_dest', 'iso3_orig', 'query_date'])
 
 
 def reshape_long_wide(df, wide_col='query_info',
@@ -77,7 +69,8 @@ def reshape_long_wide(df, wide_col='query_info',
     """Reshape wide_col from long to wide.
 
     query_info column takes two values: 'r4' and 'r6_remote'
-    r4 is those open to relocating, r6 is AND open to remote work
+    r4 is those open to relocating,
+    r6 is open to relocating AND open to remote work
     """
     if hack:
         # CHANGE THIS LATER - Tom is investigating
@@ -95,6 +88,17 @@ def reshape_long_wide(df, wide_col='query_info',
                       for x in df.columns]
         df.columns = df.columns.to_series().replace({'_r[46]': ''}, regex=True)
         return df
+
+
+def prep_population():
+    """Prep file with popluation."""
+    # TODO this function should grab population estimates
+    # and then merge them using iso3_dest and iso3_orig
+    # this info was previously merged on by Tom, but he flagged
+    # that it'd probably be better to pull population myself from
+    # a consistently updated source (makes sense!)
+    # and I haven't had time to do that
+    raise NotImplementedError
 
 
 def prep_country_area():
@@ -129,6 +133,12 @@ def prep_gdp():
     ].groupby('Country Code')['year'].transform(max)
     return df.query('year ==  max_year').set_index(
         'Country Code')['gdp'].to_dict()
+
+
+def prep_hdi():
+    """Clean up file with HDI."""
+    # same story as population, see above
+    raise NotImplementedError
 
 
 def check_geo(cepii, maciej):
@@ -256,7 +266,7 @@ def prep_internet_usage():
         header=2, usecols=['Country Code', '2018'],
         converters={'Country Code': lambda x: str.lower(x)}
     ).dropna(subset=['2018']).set_index('Country Code')['2018'].to_dict()
-    # these are probably not very accurate, I just googled them
+    # filling in missing values for internet usage, I just googled them
     internet_dict.update({'tca': 81.0, 'imn': 71.0})
     return {k: v / 100 for k, v in internet_dict.items()}
 
@@ -425,7 +435,7 @@ def get_variation(
     df, add_cols=None, by_cols=['country_orig', 'country_dest'],
     across_col='query_date',
     value_cols=['flow', 'net_flow', 'net_rate_100', 'users_orig',
-                'users_dest', 'prop_orig', 'prop_dest', 'rank', 'rank_norm']
+                'users_dest', 'rank', 'rank_norm']
 ):
     id_cols = ['country_orig', 'country_dest']
     if len(set(by_cols) - set(id_cols)) == 0:
@@ -470,8 +480,11 @@ def add_metadata(df):
     gdp_map = prep_gdp()
     area_map = prep_country_area()
     int_use = prep_internet_usage()
-    for k, v in {'area': area_map, 'internet': int_use,
-                 'gdp': gdp_map, 'prop': ''}.items():
+    for k, v in {
+        'area': area_map, 'internet': int_use, 'gdp': gdp_map
+        # TODO uncomment line below when the 'get population' function works
+        # 'prop': ''
+    }.items():
         for x in ['orig', 'dest']:
             if k == 'prop':
                 df[f'{k}_{x}'] = df[f'users_{x}'] / df[f'pop_{x}']
@@ -546,13 +559,10 @@ def data_validation(
     value_col='flow'
 ):
     """Checks and fixes before saving."""
-    # TODO check for null values and try to fill them in
+    # TODO check for all null values and try to fill them in
     df = fill_missing_borders(df)
     df = fix_query_date(df)
     # TODO add function for checking numeric vs. categorical variables
-    # make sure country areas are reasonable
-    biggest_area = 17098250
-    assert (df[['area_dest', 'area_orig']] <= biggest_area).values.all()
     test_no_duplicates()
     if no_duplicates(df, id_cols, value_col, verbose=True):
         df = df.drop_duplicates(subset=id_cols, ignore_index=True)
@@ -561,12 +571,15 @@ def data_validation(
 
 
 def main(date, update_chord_diagram):
-    df = read_data(date).pipe(reshape_long_wide)
+    df = read_data(date).pipe(reshape_long_wide).pipe(fix_iso3)
+    id_cols = ['iso3_dest', 'iso3_orig']
+    assert not df[id_cols + ['query_date']].duplicated().values.any(), \
+        df[df[id_cols + ['query_date']].duplicated(keep=False)]
     # see changes across data collection dates
     df.pipe(get_pct_change).pipe(save_output, 'pct_change')
 
     df, meta_cols = (df.pipe(merge_region_subregion).pipe(add_metadata))
-    df = (df.pipe(bin_continuous_vars, ['hdi', 'gdp'])
+    df = (df.pipe(bin_continuous_vars, ['gdp'])
             .pipe(data_validation)
             .pipe(drop_bad_rows)
             .pipe(get_rank)
@@ -579,7 +592,7 @@ def main(date, update_chord_diagram):
     df.drop('recip', axis=1).pipe(get_variation, meta_cols).pipe(
         save_output, 'variance')
     if update_chord_diagram:
-        for grp_var in ['bin_hdi', 'bin_gdp', 'midregion', 'subregion']:
+        for grp_var in ['bin_gdp', 'midregion', 'subregion']:
             by_cols = [f'{grp_var}_orig', f'{grp_var}_dest']
             value_col = ['flow']
             (df.pipe(get_variation, by_cols=by_cols, value_cols=value_col)
@@ -602,6 +615,4 @@ if __name__ == "__main__":
         action='store_true'
     )
     args = parser.parse_args()
-    print(args)
-    print(vars(args))
     main(**vars(args))
