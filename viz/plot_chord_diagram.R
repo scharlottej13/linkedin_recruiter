@@ -3,8 +3,6 @@ library(dplyr)
 source(here("viz", "chord_diagram_helpers.R"))
 
 args <- commandArgs(trailingOnly = T)
-# level_arg <- tolower(as.character(args[1]))
-# group_arg <- tolower(as.character(args[2]))
 level_arg <- "midregion"
 group_arg <- "global"
 orig_col <- paste0(level_arg, "_orig")
@@ -16,6 +14,8 @@ base_dir <- get_parent_dir()
 get_data <- function(level_arg, group_arg, recip) {
   data_dir <- file.path(base_dir, "processed-data")
   filename <- paste0("chord_diagram_", level_arg)
+  # recip is for reciprocal pairs, if true, then read in
+  # the file that is subset to *only* reciprocal pairs
   if (recip) {
     filename <- paste0(filename, "_recip")
   }
