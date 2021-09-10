@@ -84,10 +84,11 @@ def line_plt(df, iso, avg_prop, avg_n, x, y, split=None):
     )
     fig.tight_layout()
     # plt.show()
+    outdir = f"{CONFIG['directories.data']['viz']}/{iso}"
+    if not path.exists(outdir):
+        mkdir(outdir)
     plt.savefig(
-        f"{CONFIG['directories.data']['viz']}/{iso}/{iso}_{x}_{suffix}.png",
-        dpi=300
-    )
+        f"{outdir}/{iso}_{x}_{suffix}.png", dpi=300, bbox_inches="tight")
     plt.close()
 
 
@@ -103,8 +104,8 @@ def prep_data(iso, x, y):
     bins_dict = defaultdict(lambda: 5)
     bins_dict.update({
         # 'pol': [0, .0001, .000217, .0006, .001, 1],
-        'ita': [0, .00002, .00004, .0014, 1],
-        'deu': [0, .00003, .00004, .00008, .0015, 1]
+        # 'ita': [0, .00002, .00004, .0014, 1],
+        # 'deu': [0, .00003, .00004, .00008, .0015, 1]
     })
     return df.query(f"iso3_{x} == '{iso}' & iso3_{y} in {keep_isos}").assign(
         prop=df['flow'] / df[f'users_{x}'],
