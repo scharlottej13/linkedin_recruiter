@@ -59,7 +59,10 @@ plot_n_save_wrapper <- function(
     x = df, grid.col = color_vector, transparency = 0.25,
     directional = 1, direction.type = c("arrows", "diffHeight"),
     diffHeight = -0.04, annotationTrack = "grid",
-    link.arr.type = "big.arrow", link.sort = TRUE, link.largest.ontop = TRUE,
+    link.arr.type = "big.arrow",
+    # uncomment below and remove order arg for auto-ordering
+    # link.sort = TRUE, link.largest.ontop = TRUE,
+    order = names(color_vector), # manually order based on order1 column
     group = grouper, # still working out the bugs in 'grouper' part
     scale = percent # scales so all sectors are the same size
   )

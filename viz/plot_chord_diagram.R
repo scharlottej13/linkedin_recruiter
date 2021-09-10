@@ -5,6 +5,8 @@ source(here("viz", "chord_diagram_helpers.R"))
 args <- commandArgs(trailingOnly = T)
 level_arg <- "subregion"
 group_arg <- "Europe"
+# level_arg <- "midregion"
+# group_arg <- "global"
 orig_col <- paste0(level_arg, "_orig")
 dest_col <- paste0(level_arg, "_dest")
 
@@ -37,20 +39,21 @@ df1 <- read.csv(
       arrange(order1)
 color_vector <- setNames(df1$col1, df1$loc_name)
 
-
-df <- get_data(level_arg, group_arg, recip)
-plot_n_save_wrapper(
-  df, df1, color_vector, base_dir, level_arg, group_arg,
-  recip = FALSE, percent = TRUE
-)
+print(color_vector)
+print(names(color_vector))
+# df <- get_data(level_arg, group_arg, recip)
+# plot_n_save_wrapper(
+#   df, df1, color_vector, base_dir, level_arg, group_arg,
+#   recip = FALSE, percent = TRUE
+# )
 
 # plot 4 chord diagrams
-# for (recip in c(FALSE, TRUE)) {
-#   for (pct in c(FALSE, TRUE)) {
-#     df <- get_data(level_arg, group_arg, recip)
-#     plot_n_save_wrapper(
-#       df, df1, color_vector, base_dir, level_arg, group_arg,
-#       recip = recip, percent = pct
-#     )
-#   }
-# }
+for (recip in c(FALSE, TRUE)) {
+  for (pct in c(FALSE, TRUE)) {
+    df <- get_data(level_arg, group_arg, recip)
+    plot_n_save_wrapper(
+      df, df1, color_vector, base_dir, level_arg, group_arg,
+      recip = recip, percent = pct
+    )
+  }
+}
