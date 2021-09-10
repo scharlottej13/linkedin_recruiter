@@ -29,7 +29,21 @@ def check_cutoffs(df, y):
     return df
 
 
-def line_plt(df, iso, avg_prop, avg_n, x, y, split=None):
+def line_plt(df, iso, avg_prop, avg_n, x, y, split=None, log_scale=False):
+    """Create time series line plot.
+
+    df: dataframe of bilateral flows
+    iso: iso3 country code
+    avg_prop: total linkedin users / country population,
+        averaged across data collection dates
+    avg_n: total linkedin users averaged across data collection dates
+    x, y: either 'orig' or 'dest', designed to easily run for either direction
+        ie. show for a single origin all destination countries or
+        for a single destination show all origin countries
+    split: if a value is passed, then the plot is formatted a bit differently
+        to account for the fact that not all corresponding countries are shown
+    log_scale: whether to log transform the y-axis (open to relocate / users)
+    """
     fig, ax = plt.subplots(figsize=(10, 5))
     sns.lineplot(
         'query_date',
@@ -41,24 +55,21 @@ def line_plt(df, iso, avg_prop, avg_n, x, y, split=None):
         ax=ax
     )
     # make adjustments
-    ax.set_xticklabels(
-        df['query_date'].unique(),
-        rotation=45, horizontalalignment='right')
+    ax.set_xticklabels(df['query_date'].unique(),
+                       rotation=45, horizontalalignment='right')
     ax.set_xlabel('Date of Data Collection')
     ax.set_ylabel('Percent of all users')
     if not split:
-        suffix = 'time_series'
+        suffix = 'time_series_all'
         ncol = 2
         ax.set_yticklabels([f'{x:.2%}' for x in ax.get_yticks().tolist()])
-    elif split == 'log':
-        suffix = 'time_series_log_scale'
-        ncol = 2
-        ax.set_ylabel('Proportion (log10)')
-        ax.set_yticklabels([f'{x:.2}' for x in ax.get_yticks().tolist()])
     else:
         suffix = f'time_series_split_{split}'
         ncol = 1
         ax.set_yticklabels([f'{x:.3%}' for x in ax.get_yticks().tolist()])
+    if log_scale:
+        suffix = 'time_series_log_scale'
+        ax.set_ylabel('Proportion (log10)')
     # ok now format some text
     country = df[f'country_{x}'].values[0]
     if x == 'orig':
@@ -100,13 +111,7 @@ def prep_data(iso, x, y):
         df.query(f"iso3_{x} == '{iso}'").groupby(
             f'iso3_{y}'
         )['flow'].count().iloc[lambda x: x.values > 3].index)
-    # splitting the subplots is a bit manual, try for 5 splits first
     bins_dict = defaultdict(lambda: 5)
-    bins_dict.update({
-        # 'pol': [0, .0001, .000217, .0006, .001, 1],
-        # 'ita': [0, .00002, .00004, .0014, 1],
-        # 'deu': [0, .00003, .00004, .00008, .0015, 1]
-    })
     return df.query(f"iso3_{x} == '{iso}' & iso3_{y} in {keep_isos}").assign(
         prop=df['flow'] / df[f'users_{x}'],
         cutoff=lambda x: pd.qcut(
@@ -125,13 +130,15 @@ def main(iso, dest):
     df = prep_data(iso, x, y)
     prop = get_avg(df, x, 'prop')
     n = get_avg(df, x, 'users')
-    line_plt(df, iso, prop, n, x, y)
-    logdf = df.copy()
-    logdf['prop'] = np.log10(logdf['prop'])
-    line_plt(logdf, iso, prop, n, x, y, split='log')
+    # plot top 10 countries
+    # TODO something is wrong here
+    # top_10 = pd.read_csv(
+    #     f"{CONFIG['directories.data']['processed']}/variance.csv"
+    # ).query(f"iso3_{x} == '{iso}'").sort_values(
+    #     by='flow_mean', ascending=False)
+    # plot all countries, split across figures
     df = check_cutoffs(df, y)
-    num_cols = len(df.cutoff.unique())
-    for idx in range(0, num_cols):
+    for idx in range(max(df['cutoff']), 0, -1):
         line_plt(df[df['cutoff'] == idx], iso, prop, n, x, y, split=idx + 1)
 
 
