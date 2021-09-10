@@ -415,7 +415,7 @@ def get_net_migration(df, value_col='flow', add_cols=['query_date']):
 
 
 def get_rank(df):
-    """Add a column with the ranking of flow within each destination."""
+    """Add a column with the orign rank by size of flow by destination."""
     flow_grp = df.groupby(['query_date', 'iso3_dest'])['flow']
     return df.assign(
         rank=flow_grp.rank(ascending=False, method='first'),
@@ -443,12 +443,12 @@ def get_pct_change(df, diff_col='query_date'):
 
 
 def get_variation(
-    df, add_cols=None, by_cols=['country_orig', 'country_dest'],
+    df, add_cols=None, by_cols=['iso3_orig', 'iso3_dest'],
     across_col='query_date',
     value_cols=['flow', 'net_flow', 'net_rate_100', 'users_orig',
                 'users_dest', 'rank', 'rank_norm']
 ):
-    id_cols = ['country_orig', 'country_dest']
+    id_cols = ['iso3_orig', 'iso3_dest']
     if len(set(by_cols) - set(id_cols)) == 0:
         assert not df[by_cols + [across_col]].duplicated().values.any()
     else:
@@ -488,11 +488,13 @@ def add_metadata(df):
     """
     orig_cols = df.columns
     # (1) two new columns, separate for origin + destination
-    gdp_map = prep_gdp()
-    area_map = prep_country_area()
-    int_use = prep_internet_usage()
-    pop_map = prep_population()
-    for k, v in {'area': area_map, 'internet': int_use, 'gdp': gdp_map, 'pop': pop_map, 'prop': ''}.items():
+    dict_of_dicts = {
+        'area': prep_country_area(),
+        'internet': prep_internet_usage(),
+        'gdp': prep_gdp(),
+        'pop': prep_population(),
+        'prop': ''}
+    for k, v in dict_of_dicts.items():
         for x in ['orig', 'dest']:
             if k == 'prop':
                 df[f'{k}_{x}'] = df[f'users_{x}'] / df[f'pop_{x}']
@@ -559,7 +561,7 @@ def fix_query_date(df, cutoff=np.timedelta64(10, 'D')):
     midpoint = np.datetime64(new_dates[round(len(new_dates) / 2)])
     df['date_centered'] = df['query_date'].apply(
         lambda x: (np.datetime64(x) - midpoint).astype(int))
-    return df
+    return df.drop(['date_centered'], axis=1)
 
 
 def data_validation(
@@ -580,9 +582,6 @@ def data_validation(
 
 def main(date, update_chord_diagram):
     df = read_data(date).pipe(reshape_long_wide).pipe(fix_iso3)
-    id_cols = ['iso3_dest', 'iso3_orig']
-    assert not df[id_cols + ['query_date']].duplicated().values.any(), \
-        df[df[id_cols + ['query_date']].duplicated(keep=False)]
     # see changes across data collection dates
     df.pipe(get_pct_change).pipe(save_output, 'pct_change')
 
