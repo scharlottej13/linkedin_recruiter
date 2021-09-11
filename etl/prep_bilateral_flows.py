@@ -446,7 +446,7 @@ def get_variation(
     df, add_cols=None, by_cols=['iso3_orig', 'iso3_dest'],
     across_col='query_date',
     value_cols=['flow', 'net_flow', 'net_rate_100', 'users_orig',
-                'users_dest', 'rank', 'rank_norm']
+                'users_dest', 'rank', 'rank_norm', 'prop_orig', 'prop_dest']
 ):
     id_cols = ['iso3_orig', 'iso3_dest']
     if len(set(by_cols) - set(id_cols)) == 0:
