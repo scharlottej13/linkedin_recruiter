@@ -2,17 +2,11 @@ import argparse
 from collections import defaultdict
 from os import mkdir, path
 import matplotlib.pyplot as plt
-import numpy as np
 import pandas as pd
 import seaborn as sns
 from configurator import Config
 
 CONFIG = Config()
-
-
-def get_avg(df, x, metric):
-    return df.drop_duplicates(
-        ['query_date', f'country_{x}'])[f'{metric}_{x}'].mean()
 
 
 def check_cutoffs(df, y):
@@ -27,6 +21,56 @@ def check_cutoffs(df, y):
             # points are already
             df.loc[df[f'country_{y}'].isin(overlap), 'cutoff'] = idx - 1
     return df
+
+
+def lineplt_broken_y_axis(df, y):
+    """Same lineplot, but with broken axis.
+    https://matplotlib.org/3.1.0/gallery/subplots_axes_and_figures/broken_axis.html
+    """
+    f, (ax, ax2) = plt.subplots(2, 1, sharex=True, figsize=(10, 5))
+    # plot the same data on both axes
+    lineplot_kwargs = {
+        'x': 'query_date', 'y': 'prop', 'hue': f'country_{y}',
+        'style': f'country_{y}', 'marker': 'o', 'data': df, 'ax': ax}
+    sns.lineplot(**lineplot_kwargs)
+    lineplot_kwargs.update({'ax': ax2})
+    sns.lineplot(**lineplot_kwargs)
+
+    # zoom-in / limit the view to different portions of the data
+    ax.set_ylim(0.0016, 0.0019)  # outliers only
+    ax2.set_ylim(0, .0009)  # most of the data
+
+    # hide the spines between ax and ax2
+    ax.spines['bottom'].set_visible(False)
+    ax2.spines['top'].set_visible(False)
+    ax.xaxis.tick_top()
+    ax.tick_params(labeltop=False)  # don't put tick labels at the top
+    ax2.xaxis.tick_bottom()
+
+    # This looks pretty good, and was fairly painless, but you can get that
+    # cut-out diagonal lines look with just a bit more work. The important
+    # thing to know here is that in axes coordinates, which are always
+    # between 0-1, spine endpoints are at these locations (0,0), (0,1),
+    # (1,0), and (1,1).  Thus, we just need to put the diagonals in the
+    # appropriate corners of each of our axes, and so long as we use the
+    # right transform and disable clipping.
+
+    d = .015  # how big to make the diagonal lines in axes coordinates
+    # arguments to pass to plot, just so we don't keep repeating them
+    kwargs = dict(transform=ax.transAxes, color='k', clip_on=False)
+    ax.plot((-d, +d), (-d, +d), **kwargs)        # top-left diagonal
+    ax.plot((1 - d, 1 + d), (-d, +d), **kwargs)  # top-right diagonal
+
+    kwargs.update(transform=ax2.transAxes)  # switch to the bottom axes
+    ax2.plot((-d, +d), (1 - d, 1 + d), **kwargs)  # bottom-left diagonal
+    ax2.plot((1 - d, 1 + d), (1 - d, 1 + d), **kwargs)  # bottom-right diagonal
+
+    # What's cool about this is that now if we vary the distance between
+    # ax and ax2 via f.subplots_adjust(hspace=...) or plt.subplot_tool(),
+    # the diagonal lines will move accordingly, and stay right at the tips
+    # of the spines they are 'breaking'
+
+    plt.show()
 
 
 def line_plt(df, iso, avg_prop, avg_n, x, y, split=None, log_scale=False):
@@ -113,6 +157,7 @@ def prep_data(iso, x, y):
         )['flow'].count().iloc[lambda x: x.values > 3].index)
     bins_dict = defaultdict(lambda: 5)
     return df.query(f"iso3_{x} == '{iso}' & iso3_{y} in {keep_isos}").assign(
+        # proportion of relocaters out of all users
         prop=df['flow'] / df[f'users_{x}'],
         cutoff=lambda x: pd.qcut(
             x['prop'], bins_dict[iso], labels=False
@@ -127,19 +172,29 @@ def main(iso, dest):
     else:
         x = 'dest'
         y = 'orig'
+    # data that will be plotted
     df = prep_data(iso, x, y)
-    prop = get_avg(df, x, 'prop')
-    n = get_avg(df, x, 'users')
+    # now pull in some other metrics
+    variance_df = pd.read_csv(
+        f"{CONFIG['directories.data']['processed']}/variance.csv"
+    ).query(f"iso3_{x} == '{iso}'")
+    # safe to take the first value b/c we only care about country_x
+    # proportion of population using LinkedIn (averaged over time)
+    prop = variance_df[f'prop_{x}_mean'].iloc[0]
+    # number of LinkedIn users per country (averaged over time)
+    n = variance_df[f'users_{x}_mean'].iloc[0]
     # plot top 10 countries
-    # TODO something is wrong here
-    # top_10 = pd.read_csv(
-    #     f"{CONFIG['directories.data']['processed']}/variance.csv"
-    # ).query(f"iso3_{x} == '{iso}'").sort_values(
-    #     by='flow_mean', ascending=False)
+    top_10 = variance_df.sort_values(
+        by='flow_mean', ascending=False).iloc[:11][f'iso3_{y}'].values
+    # line_plt(
+    #     df[df[f'iso3_{y}'].isin(top_10)], iso, prop, n,
+    #     x, y, split='top10'
+    # )
+    lineplt_broken_y_axis(df[df[f'iso3_{y}'].isin(top_10)], y)
     # plot all countries, split across figures
-    df = check_cutoffs(df, y)
-    for idx in range(max(df['cutoff']), 0, -1):
-        line_plt(df[df['cutoff'] == idx], iso, prop, n, x, y, split=idx + 1)
+    # df = check_cutoffs(df, y)
+    # for idx in range(max(df['cutoff']), 0, -1):
+    #     line_plt(df[df['cutoff'] == idx], iso, prop, n, x, y, split=idx + 1)
 
 
 if __name__ == "__main__":
