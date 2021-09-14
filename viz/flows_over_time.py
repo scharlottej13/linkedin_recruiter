@@ -169,7 +169,7 @@ def prep_data(iso, x, y):
     keep_isos = list(
         df.query(f"iso3_{x} == '{iso}'").groupby(
             f'iso3_{y}'
-        )['flow'].count().iloc[lambda x: x.values > 3].index)
+        )['flow'].count().iloc[lambda x: x.values > 5].index)
     bins_dict = defaultdict(lambda: 5)
     return df.query(f"iso3_{x} == '{iso}' & iso3_{y} in {keep_isos}").assign(
         # proportion of relocaters out of all users
@@ -199,13 +199,20 @@ def main(iso, dest):
     # number of LinkedIn users per country (averaged over time)
     n = variance_df[f'users_{x}_mean'].iloc[0]
     # plot top 10 countries
-    top_10 = variance_df.sort_values(
-        by='flow_mean', ascending=False).iloc[:11][f'iso3_{y}'].values
-    # line_plt(
-    #     df[df[f'iso3_{y}'].isin(top_10)], iso, prop, n,
-    #     x, y, split='top10'
-    # )
-    lineplt_broken_y_axis(df[df[f'iso3_{y}'].isin(top_10)], n, prop)
+    top10 = variance_df.sort_values(
+        by='flow_mean', ascending=False).iloc[:10][f'iso3_{y}'].values
+    top10_df = df[df[f'iso3_{y}'].isin(top10)]
+    # bit of a hack
+    # because of an earlier restriction (that we like) sometimes < 10
+    num_isos = 10
+    while len(top10_df[f'iso3_{y}'].unique()) < 10:
+        num_isos += 1
+        top10 = variance_df.sort_values(
+            by='flow_mean', ascending=False
+        ).iloc[:num_isos][f'iso3_{y}'].values
+        top10_df = df[df[f'iso3_{y}'].isin(top10)]
+    line_plt(top10_df, iso, prop, n, x, y, split='top10')
+    # lineplt_broken_y_axis(df[df[f'iso3_{y}'].isin(top_10)], n, prop)
     # plot all countries, split across figures
     # df = check_cutoffs(df, y)
     # for idx in range(max(df['cutoff']), 0, -1):
