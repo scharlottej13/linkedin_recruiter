@@ -3,7 +3,6 @@
 from collections import defaultdict, namedtuple
 from os import listdir, path, pipe
 import argparse
-import json
 
 import numpy as np
 import pandas as pd
