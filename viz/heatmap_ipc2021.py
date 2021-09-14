@@ -5,11 +5,26 @@ from itertools import permutations
 from configurator import Config
 from datetime import datetime
 import argparse
+from pycountry import countries
 
 CONFIG = Config()
 
 
+def get_best_model():
+    model_dir = f"{CONFIG['directories.data']['model']}"
+    best = pd.read_csv(f"{model_dir}/model_versions.csv").query("best == 1")
+    assert len(best) == 1
+    best_row = best.iloc[0]
+    return pd.read_csv(
+        f"{model_dir}/{best_row['description']}-{best_row['version_id']}.csv")
+
+
 def prep_heatmap_data(df, value, sort):
+    # first grab country names from iso3s
+    for x in ['orig', 'dest']:
+        df[f'country_{x}'] = df[f'iso3_{x}'].apply(
+            lambda x: countries.get(alpha_3=x.upper()).name
+        )
     col_label_dict = {'country_orig': 'Current Country',
                       'country_dest': 'Prospective Destination Country'}
     id_cols = list(col_label_dict.keys())
@@ -64,18 +79,16 @@ def heatmap(df, value, sort=False):
     plt.savefig(
         f'{out_dir}/eu_heatmap_{value}{sort_str}.pdf')
     plt.savefig(
-        f'{out_dir}/plots/_archive/\
+        f'{out_dir}/_archive/\
         eu_heatmap_{value}{sort_str}_{datetime.now().date()}.pdf')
     plt.close()
 
 
 def main(value, sort):
-    model_name = "cohen_eu_dist_biggest_cities_plus"
-    df = pd.read_csv(
-        f"{CONFIG['directories.data']['model']}/{model_name}.csv")
-    df['pct_error'] = ((df['flow_median'] - df['preds']) / df['preds']) * 100
+    df = get_best_model()
+    df['pct_error'] = (df['.resid'] / df['.fitted']) * 100
     df[[f'{x}_quant' for x in ['resids', 'pct_error']]] = \
-        df[['resids', 'pct_error']].apply(
+        df[['.resid', 'pct_error']].apply(
             lambda x: pd.qcut(x, 5, labels=list(range(1, 6))).astype(int))
     heatmap(df, f'{value}_quant', sort)
 
