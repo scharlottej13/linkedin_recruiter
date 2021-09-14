@@ -8,6 +8,9 @@ from scipy import stats
 import statsmodels.stats.api as sms
 from configurator import Config
 
+"""Exploratory plots that I made at the very beginning to look at
+distributions, associations, etc."""
+
 CONFIG = Config()
 
 
