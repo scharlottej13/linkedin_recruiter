@@ -75,6 +75,22 @@ def line_plt(df, iso, avg_prop, avg_n, x, y, suffix=None, log_scale=False):
     plt.close()
 
 
+def multi_panel_lineplots(df, y):
+    fig, axs = plt.subplots(3, 3, sharex=True, sharey=True)
+    fig.suptitle('Sharing both axes')
+    for ax in axs:
+        sns.lineplot(
+            'query_date', 'prop',
+            hue=f'country_{y}',
+            style=f'country_{y}',
+            marker='o',
+            data=df,
+            ax=ax
+        )
+    fig.tight_layout()
+    plt.show()
+
+
 def prep_data(iso, x, y):
     df = pd.read_csv(
         f"{CONFIG['directories.data']['processed']}/model_input.csv")
@@ -127,11 +143,12 @@ def main(iso, dest):
     prop = variance_df[f'prop_{iso3_x}_mean'].iloc[0]
     # number of LinkedIn users per country (averaged over time)
     n = custom_round(variance_df[f'users_{iso3_x}_mean'].iloc[0])
-    # plot top 10 countries
-    line_plt(get_top_countries(10, iso3_y, df, variance_df),
-             iso, prop, n, iso3_x, iso3_y, suffix='top10')
-    line_plt(get_top_countries(5, iso3_y, df, variance_df),
-             iso, prop, n, iso3_x, iso3_y, suffix='top5')
+    # plot top countries
+    # line_plt(get_top_countries(10, iso3_y, df, variance_df),
+    #          iso, prop, n, iso3_x, iso3_y, suffix='top10')
+    # line_plt(get_top_countries(5, iso3_y, df, variance_df),
+    #          iso, prop, n, iso3_x, iso3_y, suffix='top5')
+    multi_panel_lineplots(df, iso3_y)
 
 
 if __name__ == "__main__":
