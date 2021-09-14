@@ -5,6 +5,17 @@ from pycountry import countries, historic_countries
 from configurator import Config
 
 
+def custom_round(n):
+    million = 1*10**6
+    thousand = 1*10**3
+    if n / million >= 1:
+        return f"{round(n / million, 1)} million"
+    elif n / thousand >= 1:
+        return f"{round(n / thousand, 1)} thousand"
+    else:
+        return round(n, 1)
+
+
 def get_location_hierarchy():
     """Add columns for country groups using UNSD or Abel/Cohen methods.
     UNSD: https://unstats.un.org/unsd/methodology/m49/overview/
