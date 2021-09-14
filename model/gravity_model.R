@@ -42,7 +42,7 @@ prep_data <- function(df, keep_vars, min_n, min_dest_prop, location) {
   dep_var <- keep_vars[1]
   df %>%
     filter(dep_var >= min_n) %>%
-    dplyr::select(all_of(c(keep_vars, "country_dest", "country_orig"))) %>%
+    dplyr::select(all_of(c(keep_vars, "iso3_dest", "iso3_orig"))) %>%
     drop_na()
 }
 
@@ -63,7 +63,7 @@ run_model <- function(df, type, formula) {
   } else if (type == "gravity") {
     fit <- ddm(
       dependent_variable = dep_var, distance = "distance",
-      code_origin = "country_orig", code_destination = "country_dest",
+      code_origin = "iso3_orig", code_destination = "iso3_dest",
       data = df
     )
   }
@@ -112,9 +112,9 @@ save_model <- function(
     }
   }
 
-# cl_args <- commandArgs(trailingOnly = T)
-# mvid <- as.numeric(cl_args[1])
-mvid <- 42
+cl_args <- commandArgs(trailingOnly = T)
+mvid <- as.numeric(cl_args[1])
+
 base_dir <- get_parent_dir()
 args <- read.csv(
   file.path(base_dir, "model-outputs", "model_versions.csv")
@@ -123,7 +123,7 @@ stopifnot(nrow(args) == 1)
 
 df <- read.csv(file.path(
   base_dir, "processed-data",
-  paste0(ifelse(args$recip == 0, "variance", "variance_recip"), ".csv")
+  paste0(ifelse(args$recip == 0, "variance", "variance_recip_pairs"), ".csv")
 ))
 
 # I don't know, it breaks otherwise because reasons?

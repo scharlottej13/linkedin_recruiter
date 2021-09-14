@@ -59,7 +59,7 @@ class ModelOptions(Covariates):
     def __init__(self, model_type, location, description,
                  covariates, min_n, min_prop, recip_only):
         super().__init__()
-        self.type = model_type[0]
+        self.type = model_type[0] # yes not great but argparse gives a list
         self.location = location[0]
         self.short_description = description
         self.covariates = covariates
@@ -176,13 +176,19 @@ if __name__ == "__main__":
         default=['dist_pop_weighted', 'area_dest',
                  'users_orig_median', 'users_dest_median', 'csl',
                  'internet_dest', 'internet_orig'])
+    # these arguments are for subsetting the input data for the model
     parser.add_argument(
-        '--min_n', help='minimum count', type=int, default=1)
+        '--min_n',
+        help='Subset data to have at least [min_n] flow', type=int, default=1)
     parser.add_argument(
-        '--min_prop', help='min proportion of linkedin users in destination',
+        '--min_prop',
+        help='Subset data to have at least [min_prop] proportion of users in destination',
         type=int, default=0)
-    parser.add_argument('--recip_only', action='store_true')
+    parser.add_argument(
+        '--recip_only', action='store_true',
+        help="Run model on subset of data with only reciprocal pairs.")
     args = parser.parse_args()
+    print(args)
     my_model = ModelOptions(**vars(args))
     my_model.update_model_versions()
     my_model.launch_r_model()
