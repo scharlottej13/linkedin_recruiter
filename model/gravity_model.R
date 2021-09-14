@@ -73,10 +73,6 @@ run_model <- function(df, type, formula) {
  return(fit)
 }
 
-get_rmse <- function(actual, preds) {
-  sqrt(mean((actual - preds)^2))
-}
-
 save_model <- function(
   df, filename, base_dir, formula, location,
   type = "cohen", min_n=1, min_dest_prop=0
@@ -87,17 +83,16 @@ save_model <- function(
     fit <- run_model(model_df, type, formula)
     # save model summary output as a text file
     out_dir <- file.path(base_dir, "model-outputs")
-    model_df <- broom::augment(fit)
+    model_df <- broom::augment(fit, model_df)
+    print(model_df)
     write.csv(
       broom::tidy(fit) %>% add_column(confint(fit), .after = "estimate"),
       file.path(out_dir, paste0(filename, "_betas.csv")), row.names = FALSE
     )
     write.csv(
-      broom::glance(fit) %>% add_column(
-        rmse = get_rmse(
-          model_df[, "log10(flow_median)", drop = TRUE],
-          model_df[, ".fitted", drop = TRUE]
-        )
+      broom::glance(fit) %>%
+      add_column(
+        rmse = sqrt(mean((model_df$.resid)^2))
       ), file.path(out_dir, paste0(filename, "_summary.csv")), row.names = FALSE
     )
     write.csv(model_df,
