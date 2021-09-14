@@ -606,6 +606,9 @@ def main(date, update_chord_diagram):
             (df.query('recip == 1')
                .pipe(get_variation, by_cols=by_cols, value_cols=value_col)
                .pipe(save_output, f'chord_diagram_{grp_var}_recip'))
+            (df.query('eu_plus == 1')
+               .pipe(get_variation, by_cols=by_cols, value_cols=value_col)
+               .pipe(save_output, f'chord_diagram_{grp_var}_euplus'))
 
 
 if __name__ == "__main__":
