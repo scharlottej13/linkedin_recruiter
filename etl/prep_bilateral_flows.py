@@ -548,6 +548,15 @@ def fill_missing_borders(df):
     return df.drop('neighbor', axis=1)
 
 
+def cyp_hack(df):
+    """Change subregion for Cyprus for chord diagram."""
+    df.loc[df['iso3_orig'] == 'cyp', 'subregion_orig'] = 'Southern Europe'
+    df.loc[df['iso3_dest'] == 'cyp', 'subregion_dest'] = 'Southern Europe'
+    assert set(df['subregion_orig']) == set(
+        ['Southern Europe', 'Eastern Europe', 'Western Europe', 'Northern Europe'])
+    return df
+
+
 def fix_query_date(df, cutoff=np.timedelta64(10, 'D')):
     """Adjust date of data collection for timeout errors."""
     dates = sorted([np.datetime64(x) for x in df['query_date'].unique()])
@@ -607,6 +616,7 @@ def main(date, update_chord_diagram):
                .pipe(get_variation, by_cols=by_cols, value_cols=value_col)
                .pipe(save_output, f'chord_diagram_{grp_var}_recip'))
             (df.query('eu_plus == 1')
+               .pipe(cyp_hack)
                .pipe(get_variation, by_cols=by_cols, value_cols=value_col)
                .pipe(save_output, f'chord_diagram_{grp_var}_euplus'))
 
