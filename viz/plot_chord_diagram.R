@@ -7,6 +7,7 @@ level_arg <- toString(args[1])
 group_arg <- toString(args[2])
 print(level_arg)
 print(group_arg)
+# Examples of accepted arguments:
 # level_arg <- "subregion"
 # group_arg <- "Europe"
 # level_arg <- "midregion"
@@ -35,13 +36,8 @@ get_data <- function(level_arg, group_arg, recip) {
   }
   print(paste0("Reading in ", filename))
   df <- read.csv(file.path(data_dir, paste0(filename, ".csv")))
-  # if (!(group_arg %in% c("global", "Europe"))) {
-  #   df <- df %>%
-  #     filter(
-  #       grepl(group_arg, get(dest_col)),
-  #       grepl(group_arg, get(orig_col))
-  #     )
-  # }
+  # function has not been written to work for other groups yet
+  stopifnot(group_arg %in% c("global", "Europe"))
   df %>% select(c(orig_col, dest_col, "flow_median"))
 }
 
@@ -52,20 +48,19 @@ df1 <- read.csv(
       arrange(order1)
 color_vector <- setNames(df1$col1, df1$loc_name)
 
-# df <- get_data(level_arg, group_arg, recip)
-# plot_n_save_wrapper(
-#   df, df1, color_vector, base_dir, level_arg, group_arg,
-#   recip = FALSE, percent = TRUE
-# )
+df <- get_data(level_arg, group_arg, recip)
+plot_n_save_wrapper(
+  df, df1, color_vector, base_dir, level_arg, group_arg,
+  recip = FALSE, percent = TRUE
+)
 
 # plot 4 chord diagrams
-for (recip in c(FALSE, TRUE)) {
-  for (pct in c(FALSE, TRUE)) {
-    df <- get_data(level_arg, group_arg, recip)
-    print(df)
-    plot_n_save_wrapper(
-      df, df1, color_vector, base_dir, level_arg, group_arg,
-      recip = recip, percent = pct
-    )
-  }
-}
+# for (recip in c(FALSE, TRUE)) {
+#   for (pct in c(FALSE, TRUE)) {
+#     df <- get_data(level_arg, group_arg, recip)
+#     plot_n_save_wrapper(
+#       df, df1, color_vector, base_dir, level_arg, group_arg,
+#       recip = recip, percent = pct
+#     )
+#   }
+# }
