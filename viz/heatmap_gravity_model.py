@@ -6,6 +6,8 @@ from configurator import Config
 from datetime import datetime
 import argparse
 from pycountry import countries
+from utils.misc import get_location_hierarchy
+from etl.prep_bilateral_flows import cyp_hack
 
 CONFIG = Config()
 
@@ -19,12 +21,20 @@ def get_best_model():
         f"{model_dir}/{best_row['description']}-{best_row['version_id']}.csv")
 
 
-def prep_heatmap_data(df, value, sort):
+def prep_heatmap_data(df, value, sort, aggregate=False):
     # first grab country names from iso3s
     for x in ['orig', 'dest']:
         df[f'country_{x}'] = df[f'iso3_{x}'].apply(
             lambda x: countries.get(alpha_3=x.upper()).name
         )
+    if aggregate:
+        # need the regions we're aggregating to
+        loc_df = get_location_hierarchy()
+        df = df.merge(
+            loc_df, how='left', left_on='iso3_orig', right_index=True).merge(
+            loc_df, how='left', left_on='iso3_dest', right_index=True,
+            suffixes=('_orig', '_dest')).pipe(cyp_hack).groupby(
+                ['subregion_dest', 'subregion_orig'])
     col_label_dict = {'country_orig': 'Current Country',
                       'country_dest': 'Prospective Destination Country'}
     id_cols = list(col_label_dict.keys())
