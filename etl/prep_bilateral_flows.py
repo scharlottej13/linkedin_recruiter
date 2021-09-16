@@ -549,7 +549,7 @@ def fill_missing_borders(df):
 
 
 def cyp_hack(df):
-    """Change subregion for Cyprus for chord diagram."""
+    """Change subregion for Cyprus to Southern Europe."""
     df.loc[df['iso3_orig'] == 'cyp', 'subregion_orig'] = 'Southern Europe'
     df.loc[df['iso3_dest'] == 'cyp', 'subregion_dest'] = 'Southern Europe'
     assert set(df['subregion_orig']) == set(
