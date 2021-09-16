@@ -77,8 +77,8 @@ plot_n_save_wrapper <- function(
       style <- "bending"
       num_going <- df %>%
         filter(get(orig_col) == sector_index) %>%
-        summarise(across(flow_median, sum)) %>%
-        pull(flow_median)
+        summarise(across(flow, sum)) %>%
+        pull(flow)
       # Add ticks
       if (!percent) {
         # loc1 and loc2 are split to two lines if too long
@@ -107,14 +107,21 @@ plot_n_save_wrapper <- function(
         sum1 <- df %>%
           filter(get(orig_col) == sector_index |
             get(dest_col) == sector_index) %>%
-          summarise(across(flow_median, sum)) %>%
-          pull(flow_median)
-        # add 'double counting' (may revisit this)
+          summarise(across(flow, sum)) %>%
+          pull(flow)
         self <- df %>%
           filter(get(orig_col) == sector_index &
           get(dest_col) == sector_index) %>%
-          pull(flow_median)
+          pull(flow)
+        # bit of weird double counting
+        # if you don't add the 'self' value again, then the
+        # proportions aren't accurate
         total <- sum1 + self
+        num_users <- df %>%
+          filter(get(dest_col) == sector_index) %>%
+          slice(1) %>%
+          pull(users_dest_median)
+        print(num_users)
         # set the ticks
         sequence <- seq(0, 1, 0.20)
         circos.axis(
@@ -135,7 +142,12 @@ plot_n_save_wrapper <- function(
         circos.lines(xlim, c(3, 3), lty = 3)
         circos.text(
           mean(xlim), 3.2,
-          paste0("N = ", prettyNum(round(total, -3), big.mark = ",")),
+          paste0(
+            "N = ",
+            prettyNum(round(total, -3), big.mark = ",")),
+            # "(",
+            # round((sum1 / num_users) * 100000),
+            # " per 100,000 users)"),
           cex = 0.8, adj = c(0.5, 0), niceFacing = TRUE
         )
       }

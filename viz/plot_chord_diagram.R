@@ -38,7 +38,7 @@ get_data <- function(level_arg, group_arg, recip) {
   df <- read.csv(file.path(data_dir, paste0(filename, ".csv")))
   # function has not been written to work for other groups yet
   stopifnot(group_arg %in% c("global", "Europe"))
-  df %>% select(c(orig_col, dest_col, "flow_median"))
+  df %>% select(c(orig_col, dest_col, "flow", "users_dest_median"))
 }
 
 # for colors & order of sections
@@ -48,10 +48,11 @@ df1 <- read.csv(
       arrange(order1)
 color_vector <- setNames(df1$col1, df1$loc_name)
 
+recip <- FALSE
 df <- get_data(level_arg, group_arg, recip)
 plot_n_save_wrapper(
   df, df1, color_vector, base_dir, level_arg, group_arg,
-  recip = FALSE, percent = TRUE
+  recip = recip, percent = TRUE
 )
 
 # plot 4 chord diagrams
