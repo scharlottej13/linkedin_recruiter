@@ -1,4 +1,5 @@
 import pandas as pd
+import numpy as np
 import seaborn as sns
 import matplotlib.pyplot as plt
 from itertools import permutations
@@ -12,6 +13,10 @@ from etl.prep_bilateral_flows import cyp_hack
 CONFIG = Config()
 
 
+def percent_error(resid, fitted):
+    return (resid / fitted) * 100
+
+
 def get_best_model():
     model_dir = f"{CONFIG['directories.data']['model']}"
     best = pd.read_csv(f"{model_dir}/model_versions.csv").query("best == 1")
@@ -21,49 +26,70 @@ def get_best_model():
         f"{model_dir}/{best_row['description']}-{best_row['version_id']}.csv")
 
 
-def prep_heatmap_data(df, value, sort, aggregate=False):
-    # first grab country names from iso3s
-    for x in ['orig', 'dest']:
-        df[f'country_{x}'] = df[f'iso3_{x}'].apply(
-            lambda x: countries.get(alpha_3=x.upper()).name
-        )
-    if aggregate:
-        # need the regions we're aggregating to
-        loc_df = get_location_hierarchy()
-        df = df.merge(
-            loc_df, how='left', left_on='iso3_orig', right_index=True).merge(
-            loc_df, how='left', left_on='iso3_dest', right_index=True,
-            suffixes=('_orig', '_dest')).pipe(cyp_hack).groupby(
-                ['subregion_dest', 'subregion_orig'])
-    col_label_dict = {'country_orig': 'Current Country',
-                      'country_dest': 'Prospective Destination Country'}
+def aggregate_locations(df, loc_level='subregion'):
+    """Aggregate model results to a given location level.
+    
+    The model is run in log space, so residuals should be
+    calculated in log space, however, it doesn't make sense to sum log-
+    transformed values. Therefore, sum to the region then
+    log-transform and recalculate residuals.
+    """
+    # read in mapping from iso3 to region, subregion, midregion
+    loc_df = get_location_hierarchy()[[loc_level]]
+    df = df.merge(
+        loc_df, how='left', left_on='iso3_orig', right_index=True
+    ).merge(
+        loc_df, how='left', left_on='iso3_dest', right_index=True,
+        suffixes=('_orig', '_dest')
+    ).pipe(cyp_hack).assign(
+        antilog_preds=np.power(10, df['.fitted'])
+    ).groupby(
+        [f'{loc_level}_orig', f'{loc_level}_dest'], as_index=False
+    )[['antilog_preds', 'flow_median', 'users_dest_median']].sum().rename(
+        columns={'antilog_preds': '.fitted',
+                 'subregion_orig': 'region_orig',
+                 'subregion_dest': 'region_dest'})
+    df['.resid'] = df['flow_median'] - df['.fitted']
+    return df
+
+
+def prep_heatmap_data(df, value, loc_level='country'):
+    if loc_level == 'country':
+        for x in ['orig', 'dest']:
+            df[f'{loc_level}_{x}'] = df[f'iso3_{x}'].apply(
+                lambda x: countries.get(alpha_3=x.upper()).name
+            )
+    col_label_dict = {
+        f'{loc_level}_orig': f'Current {loc_level.capitalize()}',
+        f'{loc_level}_dest': f'Prospective Destination {loc_level.capitalize()}'
+    }
     id_cols = list(col_label_dict.keys())
+    labels = col_label_dict.values()
     pvt = pd.DataFrame(
-        permutations(df['country_dest'].unique(), 2), columns=id_cols
+        permutations(df[f'{loc_level}_dest'].unique(), 2), columns=id_cols
     ).merge(df[id_cols + [value]], how='left').fillna(0).rename(
         columns=col_label_dict).pivot_table(
-            value, 'Current Country', 'Prospective Destination Country'
+            value, labels[0], labels[1]
         )
-    if sort:
-        order = df.sort_values(by='users_dest_median', ascending=False)[
-            'country_dest'].drop_duplicates().values
-        return pvt.reindex(order, axis=0).reindex(order, axis=1)
-    else:
-        return pvt
+    order = df.sort_values(by='users_dest_median', ascending=False)[
+        f'{loc_level}_dest'].drop_duplicates().values
+    return pvt.reindex(order, axis=0).reindex(order, axis=1)
 
 
-def heatmap(df, value, sort=False):
+def heatmap(df, value, aggregate):
     assert 'quant' in value, "This will only work for categorical plots"
     ticks = list(set(df[value]))
     heatmap_kws = {
         'square': True, 'linewidths': .5, 'cbar_kws': {"shrink": .5},
         'cmap': sns.color_palette("coolwarm", len(ticks)),
     }
-    recip_pairs = prep_heatmap_data(df, value, sort)
+    if aggregate:
+        pairs = prep_heatmap_data(df, value, loc_level='region')
+    else:
+        pairs = prep_heatmap_data(df, value)
     # create figure
     plt.figure(figsize=(12, 10))
-    # make plot
-    ax = sns.heatmap(recip_pairs, mask=(recip_pairs == 0), **heatmap_kws)
+    ax = sns.heatmap(pairs, mask=(pairs == 0), **heatmap_kws)
     # hack for making the colorbar show categories
     colorbar = ax.collections[0].colorbar
     colorbar.set_ticks(ticks)
@@ -84,30 +110,32 @@ def heatmap(df, value, sort=False):
     plt.setp(ax.get_xticklabels(), rotation=-30, ha="right",
              rotation_mode="anchor")
     plt.tight_layout()
-    sort_str = '_sorted' if sort else ''
     out_dir = CONFIG['directories.data']['viz']
+    agg_str = '_aggregate' if aggregate else ''
     plt.savefig(
-        f'{out_dir}/eu_heatmap_{value}{sort_str}.pdf')
+        f'{out_dir}/eu_heatmap_{value}{agg_str}.pdf')
     plt.savefig(
         f'{out_dir}/_archive/\
-        eu_heatmap_{value}{sort_str}_{datetime.now().date()}.pdf')
+        eu_heatmap_{value}{agg_str}_{datetime.now().date()}.pdf')
     plt.close()
 
 
-def main(value, sort):
+def main(value, aggregate):
     df = get_best_model()
-    df['pct_error'] = (df['.resid'] / df['.fitted']) * 100
+    if aggregate:
+        df = aggregate_locations(df)
+    df['pct_error'] = percent_error(df['.resid'], df['.fitted'])
     df[[f'{x}_quant' for x in ['resids', 'pct_error']]] = \
         df[['.resid', 'pct_error']].apply(
             lambda x: pd.qcut(x, 5, labels=list(range(1, 6))).astype(int))
-    heatmap(df, f'{value}_quant', sort)
+    heatmap(df, f'{value}_quant', aggregate)
 
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument('value', choices=['pct_error', 'resids'])
     parser.add_argument(
-        '-sort', help='whether to sort columns, rows by number of users',
+        '-aggregate', help='whether to aggregate to higher location level',
         action='store_true'
     )
     args = parser.parse_args()
