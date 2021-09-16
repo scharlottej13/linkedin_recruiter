@@ -442,26 +442,47 @@ def get_pct_change(df, diff_col='query_date'):
 
 
 def get_variation(
-    df, add_cols=None, by_cols=['iso3_orig', 'iso3_dest'],
-    across_col='query_date',
+    df, add_cols=None, across_col='query_date',
     value_cols=['flow', 'net_flow', 'net_rate_100', 'users_orig',
                 'users_dest', 'rank', 'rank_norm', 'prop_orig', 'prop_dest']
 ):
     id_cols = ['iso3_orig', 'iso3_dest']
-    if len(set(by_cols) - set(id_cols)) == 0:
-        assert not df[by_cols + [across_col]].duplicated().values.any()
-    else:
-        df = df.groupby(by_cols + [across_col])[value_cols].sum().reset_index()
-    v_df = df.groupby(by_cols)[value_cols].agg(
+    assert not df[id_cols + [across_col]].duplicated().values.any()
+    v_df = df.groupby(id_cols)[value_cols].agg(
         ['std', 'mean', 'median', 'count', cv]
     ).reset_index()
     v_df.columns = ['_'.join(x) if '' not in x
                     else ''.join(x) for x in v_df.columns]
     if add_cols:
         add_cols = list(set(add_cols) - set(value_cols))
-        return v_df.merge(df[by_cols + add_cols].drop_duplicates())
+        return v_df.merge(df[id_cols + add_cols].drop_duplicates())
     else:
         return v_df
+
+
+def prep_chord_diagram(df, grp_var):
+    """Aggregate up to level of grouping variable for chord diagram.
+    
+    Currently not very flexible, only written for aggregating flow
+    and number of linkedin users by country.
+    """
+    id_cols = ['iso3_orig', 'iso3_dest', 'query_date']
+    assert not df[id_cols].duplicated().values.any()
+    flow_id_cols = [f'{grp_var}_orig', f'{grp_var}_dest']
+    flow_df = df.groupby(
+        flow_id_cols + ['query_date'], as_index=False
+    )['flow'].sum().groupby(
+        flow_id_cols
+    )['flow'].agg('median').reset_index()
+    users_df = df[
+        ['iso3_dest', 'users_dest', 'query_date', f'{grp_var}_dest']
+    ].drop_duplicates().groupby(
+        [f'{grp_var}_dest', 'query_date'], as_index=False
+    )['users_dest'].sum().groupby(
+        [f'{grp_var}_dest']
+    )['users_dest'].agg('median').reset_index()
+    return flow_df.merge(users_df, on=f'{grp_var}_dest').rename(
+        columns={'median': 'flow_median', 'users_dest': 'users_dest_median'})
 
 
 def drop_bad_rows(df):
@@ -608,16 +629,14 @@ def main(date, update_chord_diagram):
         save_output, 'variance')
     if update_chord_diagram:
         for grp_var in ['bin_gdp', 'midregion', 'subregion']:
-            by_cols = [f'{grp_var}_orig', f'{grp_var}_dest']
-            value_col = ['flow']
-            (df.pipe(get_variation, by_cols=by_cols, value_cols=value_col)
+            (df.pipe(prep_chord_diagram, grp_var)
                .pipe(save_output, f'chord_diagram_{grp_var}'))
             (df.query('recip == 1')
-               .pipe(get_variation, by_cols=by_cols, value_cols=value_col)
+               .pipe(prep_chord_diagram, grp_var)
                .pipe(save_output, f'chord_diagram_{grp_var}_recip'))
             (df.query('eu_plus == 1')
                .pipe(cyp_hack)
-               .pipe(get_variation, by_cols=by_cols, value_cols=value_col)
+               .pipe(prep_chord_diagram, grp_var)
                .pipe(save_output, f'chord_diagram_{grp_var}_euplus'))
 
 
