@@ -34,6 +34,8 @@ def line_plt(df, iso, avg_prop, avg_n, x, y, suffix=None, log_scale=False):
         ax=ax
     )
     # make adjustments
+    # did this so that a bunch of plots would all be on the same y-axis
+    ax.set_ylim((0 , .00250))
     ax.set_xticklabels(
         df['query_date'].unique(), rotation=45, ha='right')
     ax.set_yticklabels([f'{x*100000:.0f}' for x in ax.get_yticks().tolist()])
@@ -73,22 +75,6 @@ def line_plt(df, iso, avg_prop, avg_n, x, y, suffix=None, log_scale=False):
     plt.savefig(
         f"{outdir}/{iso}_{x}_time_series_{suffix}.png", dpi=300, bbox_inches="tight")
     plt.close()
-
-
-def multi_panel_lineplots(df, y):
-    fig, axs = plt.subplots(3, 3, sharex=True, sharey=True)
-    fig.suptitle('Sharing both axes')
-    for ax in axs:
-        sns.lineplot(
-            'query_date', 'prop',
-            hue=f'country_{y}',
-            style=f'country_{y}',
-            marker='o',
-            data=df,
-            ax=ax
-        )
-    fig.tight_layout()
-    plt.show()
 
 
 def prep_data(iso, x, y):
@@ -146,9 +132,8 @@ def main(iso, dest):
     # plot top countries
     # line_plt(get_top_countries(10, iso3_y, df, variance_df),
     #          iso, prop, n, iso3_x, iso3_y, suffix='top10')
-    # line_plt(get_top_countries(5, iso3_y, df, variance_df),
-    #          iso, prop, n, iso3_x, iso3_y, suffix='top5')
-    multi_panel_lineplots(df, iso3_y)
+    line_plt(get_top_countries(5, iso3_y, df, variance_df),
+             iso, prop, n, iso3_x, iso3_y, suffix='top5')
 
 
 if __name__ == "__main__":
