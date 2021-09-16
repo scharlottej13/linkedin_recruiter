@@ -64,13 +64,17 @@ def prep_heatmap_data(df, value, loc_level='country'):
         f'{loc_level}_dest': f'Prospective Destination {loc_level.capitalize()}'
     }
     id_cols = list(col_label_dict.keys())
-    labels = col_label_dict.values()
-    pvt = pd.DataFrame(
-        permutations(df[f'{loc_level}_dest'].unique(), 2), columns=id_cols
-    ).merge(df[id_cols + [value]], how='left').fillna(0).rename(
-        columns=col_label_dict).pivot_table(
-            value, labels[0], labels[1]
-        )
+    labels = list(col_label_dict.values())
+    if loc_level == 'country':
+        pvt = pd.DataFrame(
+            permutations(df[f'{loc_level}_dest'].unique(), 2), columns=id_cols
+        ).merge(df[id_cols + [value]], how='left').fillna(0).rename(
+            columns=col_label_dict).pivot_table(
+                value, labels[0], labels[1]
+            )
+    else:
+        pvt = df[id_cols + [value]].rename(columns=col_label_dict).pivot_table(
+            value, labels[0], labels[1])
     order = df.sort_values(by='users_dest_median', ascending=False)[
         f'{loc_level}_dest'].drop_duplicates().values
     return pvt.reindex(order, axis=0).reindex(order, axis=1)
@@ -85,10 +89,12 @@ def heatmap(df, value, aggregate):
     }
     if aggregate:
         pairs = prep_heatmap_data(df, value, loc_level='region')
+        fig_size = (9, 6)
     else:
         pairs = prep_heatmap_data(df, value)
+        fig_size = (12, 10)
     # create figure
-    plt.figure(figsize=(12, 10))
+    fig, ax = plt.subplots(figsize=fig_size)
     ax = sns.heatmap(pairs, mask=(pairs == 0), **heatmap_kws)
     # hack for making the colorbar show categories
     colorbar = ax.collections[0].colorbar
@@ -109,7 +115,7 @@ def heatmap(df, value, aggregate):
     # Rotate the tick labels and set alignment
     plt.setp(ax.get_xticklabels(), rotation=-30, ha="right",
              rotation_mode="anchor")
-    plt.tight_layout()
+    fig.tight_layout()
     out_dir = CONFIG['directories.data']['viz']
     agg_str = '_aggregate' if aggregate else ''
     plt.savefig(
@@ -139,4 +145,4 @@ if __name__ == "__main__":
         action='store_true'
     )
     args = parser.parse_args()
-    main(args.value, args.sort)
+    main(args.value, args.aggregate)
