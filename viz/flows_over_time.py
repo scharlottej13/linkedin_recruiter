@@ -2,7 +2,10 @@ import argparse
 from collections import defaultdict
 from os import mkdir, path
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 import pandas as pd
+import numpy as np
+from datetime import datetime
 import seaborn as sns
 from configurator import Config
 from utils.misc import custom_round
@@ -10,10 +13,11 @@ from utils.misc import custom_round
 CONFIG = Config()
 
 
-def line_plt(df, iso, avg_prop, avg_n, x, y, suffix=None, log_scale=False):
+def line_plt(df, iso, avg_prop, avg_n, x, y,
+             y_lim=None, suffix=None, log_scale=False):
     """Create time series line plot.
 
-    df: dataframe of bilateral flows
+    df: dataframe of bilateral flows in 'long' format
     iso: iso3 country code
     avg_prop: total linkedin users / country population,
         averaged across data collection dates
@@ -21,30 +25,36 @@ def line_plt(df, iso, avg_prop, avg_n, x, y, suffix=None, log_scale=False):
     x, y: either 'orig' or 'dest', designed to easily run for either direction
         ie. show for a single origin all destination countries or
         for a single destination show all origin countries
+    y_lim: tuple of (min, max) values for y axis-- change this so all plots to
+    have the same y axis limits.
     log_scale: whether to log transform the y-axis (open to relocate / users)
     """
     fig, ax = plt.subplots(figsize=(10, 5))
+    # base plot
     sns.lineplot(
-        'query_date',
+        'query_datetime',
         'prop',
         hue=f'country_{y}',
         style=f'country_{y}',
-        marker='o',
+        # marker='o',
         data=df,
         ax=ax
     )
-    # make adjustments
-    # did this so that a bunch of plots would all be on the same y-axis
-    ax.set_ylim((0 , .00250))
-    ax.set_xticklabels(
-        df['query_date'].unique(), rotation=45, ha='right')
-    ax.set_yticklabels([f'{x*100000:.0f}' for x in ax.get_yticks().tolist()])
+    # x-axis
+    ax.xaxis.set_major_locator(mdates.MonthLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter('%b-%y'))
     ax.set_xlabel('Date of Data Collection')
+    # rotates and right aligns the x labels, moves bottom of axes to make room
+    fig.autofmt_xdate()
+    # y-axis
+    if y_lim:
+        ax.set_ylim(y_lim)
+    ax.set_yticklabels([f'{x*100000:.0f}' for x in ax.get_yticks().tolist()])
     ax.set_ylabel('Users per 100,000')
     if log_scale:
         suffix = 'log_scale'
         ax.set_ylabel('Proportion (log10)')
-    # ok now format some text
+    # legends
     country = df[f'country_{x}'].values[0]
     if x == 'orig':
         legend = 'Destination Country'
@@ -68,7 +78,6 @@ def line_plt(df, iso, avg_prop, avg_n, x, y, suffix=None, log_scale=False):
         transform=ax.transAxes
     )
     fig.tight_layout()
-    # plt.show()
     outdir = f"{CONFIG['directories.data']['viz']}/{iso}"
     if not path.exists(outdir):
         mkdir(outdir)
@@ -78,8 +87,11 @@ def line_plt(df, iso, avg_prop, avg_n, x, y, suffix=None, log_scale=False):
 
 
 def prep_data(iso, x, y):
+    # drop july 2020 so time points shown are evenly spaced
     df = pd.read_csv(
-        f"{CONFIG['directories.data']['processed']}/model_input.csv")
+        f"{CONFIG['directories.data']['processed']}/model_input.csv").query(
+            "query_date != '2020-07-25'"
+        )
     # restrict to countries that show up at least a few times
     keep_isos = list(
         df.query(f"iso3_{x} == '{iso}'").groupby(
@@ -91,8 +103,10 @@ def prep_data(iso, x, y):
         prop=df['flow'] / df[f'users_{x}'],
         cutoff=lambda x: pd.qcut(
             x['prop'], bins_dict[iso], labels=False
-        )
-    ).sort_values(by=['query_date', 'prop'], ascending=[True, False])
+        ),
+        query_datetime=df['query_date'].apply(
+            lambda x: datetime.strptime(x, '%Y-%m-%d'))
+    ).sort_values(by=['query_datetime', 'prop'], ascending=[True, False])
 
 
 def get_top_countries(x, iso3_y, df, variance_df):
@@ -130,10 +144,12 @@ def main(iso, dest):
     # number of LinkedIn users per country (averaged over time)
     n = custom_round(variance_df[f'users_{iso3_x}_mean'].iloc[0])
     # plot top countries
-    # line_plt(get_top_countries(10, iso3_y, df, variance_df),
-    #          iso, prop, n, iso3_x, iso3_y, suffix='top10')
-    line_plt(get_top_countries(5, iso3_y, df, variance_df),
-             iso, prop, n, iso3_x, iso3_y, suffix='top5')
+    # line_plt(
+    #     get_top_countries(10, iso3_y, df, variance_df),
+    #     iso, prop, n, iso3_x, iso3_y, suffix='top10')
+    line_plt(
+        get_top_countries(5, iso3_y, df, variance_df),
+        iso, prop, n, iso3_x, iso3_y, y_lim=(0, .0025), suffix='top5')
 
 
 if __name__ == "__main__":
@@ -144,4 +160,8 @@ if __name__ == "__main__":
         action='store_true'
     )
     args = parser.parse_args()
-    main(args.iso3, args.destination)
+    if args.iso3 == 'paa2022':
+        for iso3 in ['deu', 'esp', 'fra']:
+            main(iso3, False)
+    else:
+        main(args.iso3, args.destination)
