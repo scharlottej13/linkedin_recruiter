@@ -160,7 +160,7 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
     if args.iso3 == 'paa2022':
-        for iso3 in ['deu', 'esp', 'fra']:
+        for iso3 in ['deu', 'esp', 'fra', 'nld', 'ita', 'gbr']:
             main(iso3, False)
     else:
         main(args.iso3, args.destination)

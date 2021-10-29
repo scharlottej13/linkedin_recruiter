@@ -143,8 +143,8 @@ plot_n_save_wrapper <- function(
         circos.text(
           mean(xlim), 3.2,
           paste0(
-            "N = ",
-            prettyNum(round(total, -3), big.mark = ",")),
+            prettyNum(round(total, -3), big.mark = ","),
+            " prospective relocators"),
             # "(",
             # round((sum1 / num_users) * 100000),
             # " per 100,000 users)"),
