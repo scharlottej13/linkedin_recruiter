@@ -8,7 +8,8 @@ International migration is an important phenomenon with measurable demographic c
 
 While traditional surveys of migration aspirations are of great use for theory development, they typically have several shortcomings, including an often narrow scope, spatio-temporal restrictions, and lack of inter-survey comparability. To address some of the limitations of existing survey data and to complement the growing literature in the field, we offer new analyses that rely on a novel – and as of yet untapped – data source: aggregate-level information on LinkedIn users open to work-related relocation, as obtained from the LinkedIn Recruiter platform.1 Compared to traditional survey data, the LinkedIn data that we use to study openness to migration are less expensive to collect, are continuously available, have consistently defined variables across 24 different languages, and provide a global snapshot of openness to migration as recent as the latest update to a person’s LinkedIn profile. Furthermore, rather than directly asking a person about their migration preferences, we capture routine job-seeking tendencies, thus removing reactive responses to the survey instrument.
 
-![chord diagram](viz/circle_sankey.pdf)
+<!-- ![chord diagram](viz/circle_sankey.pdf) -->
+<embed src="viz/circle_sankey.pdf" type="application/pdf">
 *Figure 1: Chord diagram showing the number of LinkedIn users open to relocation between two countries, aggregated to regions. Direction is indicated by the arrowhead and size by the width at the base of the arrow. Proportions have been scaled within each region, with the total rounded to the nearest thousand. As an illustrative example, approximately 30% (800,000) of those currently located in Europe are open to relocating to another country in Europe [5].*
 
 
